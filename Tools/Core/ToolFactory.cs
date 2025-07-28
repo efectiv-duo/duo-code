@@ -1,4 +1,5 @@
 using duo_code.Services;
+using duo_code.Tools;
 
 namespace duo_code.Tools.Core;
 
@@ -168,64 +169,147 @@ public static class ToolFactory
     {
         var patchAction = new PatchFileAction { Path = filePath };
 
-        // Parse the patch content
-        for (int i = contentStartIndex; i < contentEndIndex; i++)
+        // Parse the new format with <<<< FIND / >>>> and <<<<< REPLACE / >>>>> blocks
+        var i = contentStartIndex;
+        while (i < contentEndIndex)
         {
-            var line = lines[i];
-            if (line.StartsWith("- "))
+            var line = lines[i].Trim();
+            
+            // Look for FIND block markers
+            if (line.StartsWith("<<<<") || line.StartsWith("- ") || line.StartsWith("-"))
             {
-                // Remove operation
-                patchAction.Patches.Add(new PatchOperation
+                var patch = ParseSinglePatch(lines, ref i, contentEndIndex);
+                if (patch != null)
                 {
-                    Operation = PatchOperationType.Remove,
-                    Content = line.Substring(2)
-                });
-            }
-            else if (line.StartsWith("+ "))
-            {
-                // Add operation
-                patchAction.Patches.Add(new PatchOperation
-                {
-                    Operation = PatchOperationType.Add,
-                    Content = line.Substring(2)
-                });
-            }
-            else if (line.StartsWith("-"))
-            {
-                // Multi-line remove - collect until we see something else
-                var removeContent = new List<string> { line.Substring(1) };
-                i++;
-                while (i < contentEndIndex && !lines[i].StartsWith("+") && !lines[i].StartsWith("-"))
-                {
-                    removeContent.Add(lines[i]);
-                    i++;
+                    patchAction.Patches.Add(patch);
                 }
-                i--; // Back up one since the loop will increment
-                patchAction.Patches.Add(new PatchOperation
-                {
-                    Operation = PatchOperationType.Remove,
-                    Content = string.Join(Environment.NewLine, removeContent)
-                });
             }
-            else if (line.StartsWith("+"))
+            else
             {
-                // Multi-line add - collect until we see something else
-                var addContent = new List<string> { line.Substring(1) };
                 i++;
-                while (i < contentEndIndex && !lines[i].StartsWith("+") && !lines[i].StartsWith("-"))
-                {
-                    addContent.Add(lines[i]);
-                    i++;
-                }
-                i--; // Back up one since the loop will increment
-                patchAction.Patches.Add(new PatchOperation
-                {
-                    Operation = PatchOperationType.Add,
-                    Content = string.Join(Environment.NewLine, addContent)
-                });
             }
         }
 
         return patchAction;
+    }
+
+    private static SmartPatchOperation? ParseSinglePatch(string[] lines, ref int index, int contentEndIndex)
+    {
+        var currentLine = lines[index].Trim();
+        
+        // Handle legacy format (- and +)
+        if (currentLine.StartsWith("- ") || currentLine.StartsWith("-"))
+        {
+            return ParseLegacyPatch(lines, ref index, contentEndIndex);
+        }
+        
+        // Handle new format with <<<< blocks
+        if (currentLine.StartsWith("<<<<"))
+        {
+            return ParseNewFormatPatch(lines, ref index, contentEndIndex);
+        }
+        
+        index++;
+        return null;
+    }
+
+    private static SmartPatchOperation? ParseLegacyPatch(string[] lines, ref int index, int contentEndIndex)
+    {
+        var findContent = new List<string>();
+        var replaceContent = new List<string>();
+        var inRemoveSection = true;
+        
+        // Parse remove section
+        while (index < contentEndIndex && (lines[index].StartsWith("- ") || lines[index].StartsWith("-")))
+        {
+            var content = lines[index].StartsWith("- ") ? lines[index].Substring(2) : lines[index].Substring(1);
+            findContent.Add(content);
+            index++;
+        }
+        
+        // Parse add section
+        while (index < contentEndIndex && (lines[index].StartsWith("+ ") || lines[index].StartsWith("+")))
+        {
+            var content = lines[index].StartsWith("+ ") ? lines[index].Substring(2) : lines[index].Substring(1);
+            replaceContent.Add(content);
+            index++;
+        }
+        
+        if (findContent.Count == 0)
+            return null;
+            
+        return new SmartPatchOperation
+        {
+            MatchType = PatchMatchType.Exact,
+            FindContent = string.Join(Environment.NewLine, findContent),
+            ReplaceContent = string.Join(Environment.NewLine, replaceContent)
+        };
+    }
+
+    private static SmartPatchOperation? ParseNewFormatPatch(string[] lines, ref int index, int contentEndIndex)
+    {
+        var currentLine = lines[index].Trim();
+        
+        // Determine match type from the FIND marker
+        PatchMatchType matchType = PatchMatchType.Exact;
+        if (currentLine.Contains("FIND_FUZZY"))
+            matchType = PatchMatchType.Fuzzy;
+        else if (currentLine.Contains("FIND_REGEX"))
+            matchType = PatchMatchType.Regex;
+        
+        index++; // Move past the <<<< FIND line
+        
+        // Collect FIND content until we hit >>>>
+        var findContent = new List<string>();
+        while (index < contentEndIndex && !lines[index].Trim().StartsWith(">>>>"))
+        {
+            findContent.Add(lines[index]);
+            index++;
+        }
+        
+        if (index >= contentEndIndex || !lines[index].Trim().StartsWith(">>>>"))
+        {
+            // Malformed - missing closing >>>>
+            throw new ArgumentException("Malformed PATCH_FILE: Missing >>>> to close FIND block");
+        }
+        
+        index++; // Move past the >>>> line
+        
+        // Look for <<<<< REPLACE
+        while (index < contentEndIndex && !lines[index].Trim().StartsWith("<<<<<"))
+        {
+            index++;
+        }
+        
+        if (index >= contentEndIndex || !lines[index].Trim().Contains("REPLACE"))
+        {
+            // Malformed - missing REPLACE block
+            throw new ArgumentException("Malformed PATCH_FILE: Missing <<<<< REPLACE block");
+        }
+        
+        index++; // Move past the <<<<< REPLACE line
+        
+        // Collect REPLACE content until we hit >>>>>
+        var replaceContent = new List<string>();
+        while (index < contentEndIndex && !lines[index].Trim().StartsWith(">>>>>"))
+        {
+            replaceContent.Add(lines[index]);
+            index++;
+        }
+        
+        if (index >= contentEndIndex || !lines[index].Trim().StartsWith(">>>>>"))
+        {
+            // Malformed - missing closing >>>>>
+            throw new ArgumentException("Malformed PATCH_FILE: Missing >>>>> to close REPLACE block");
+        }
+        
+        index++; // Move past the >>>>> line
+        
+        return new SmartPatchOperation
+        {
+            MatchType = matchType,
+            FindContent = string.Join(Environment.NewLine, findContent),
+            ReplaceContent = string.Join(Environment.NewLine, replaceContent)
+        };
     }
 }
