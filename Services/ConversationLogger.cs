@@ -22,9 +22,9 @@ namespace duo_code.Services
             Directory.CreateDirectory(_logsDirectory);
         }
 
-        public void SaveConversation(List<Message> messages)
+        public void SaveConversation(object conversation)
         {
-            if (messages == null || messages.Count == 0)
+            if (conversation == null)
                 return;
 
             try
@@ -33,24 +33,7 @@ namespace duo_code.Services
                 var fileName = $"conversation_{timestamp}.json";
                 var filePath = Path.Combine(_logsDirectory, fileName);
 
-                var conversationData = new
-                {
-                    timestamp = DateTime.Now,
-                    messages = messages.Select(m => new
-                    {
-                        role = m.Role,
-                        content = m.Content,
-                        thinking = m.Thinking,
-                        actions = m.Actions?.Select(a => new
-                        {
-                            toolName = a.ToolName,
-                            result = a.FullResult,
-                            summarized = a.SummarizedResult
-                        })
-                    })
-                };
-
-                var json = JsonSerializer.Serialize(conversationData, new JsonSerializerOptions 
+                var json = JsonSerializer.Serialize(conversation, new JsonSerializerOptions 
                 { 
                     WriteIndented = true 
                 });

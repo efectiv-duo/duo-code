@@ -49,7 +49,7 @@ public static class ToolFactory
             int contentEndIndex = contentStartIndex;
 
             // For tools that need content, find where the next tool starts
-            if (toolType == "CREATE_FILE" || toolType == "UPDATE_FILE" || toolType == "FINISH_TASK" || toolType == "UPDATE_TODOS")
+            if (toolType == "CREATE_FILE" || toolType == "UPDATE_FILE" || toolType == "EDIT_FILE" || toolType == "FINISH_TASK" || toolType == "UPDATE_TODOS")
             {
                 // Find the next tool command or end of input
                 while (contentEndIndex < lines.Length)
@@ -73,10 +73,11 @@ public static class ToolFactory
                         ? new CreateFileAction { Path = args, Content = content }
                         : new UpdateFileAction { Path = args, Content = content };
                     break;
-
-                case "PATCH_FILE":
-                    action = ParsePatchFileAction(args, lines, contentStartIndex, contentEndIndex);
+                case "EDIT_FILE":
+                    var editContent = string.Join(Environment.NewLine, lines.Skip(contentStartIndex).Take(contentEndIndex - contentStartIndex));
+                    action = ParseEditFileAction(args, editContent);
                     break;
+
 
                 case "DELETE_FILE":
                     action = new DeleteFileAction { Path = args };
@@ -93,8 +94,11 @@ public static class ToolFactory
                 case "FIND":
                     action = new FindAction { Pattern = args };
                     break;
+                case "SEARCH":
+                    action = new SearchAction { Pattern = args };
+                    break;
                 case "READ_FILE":
-                    action = new ReadFileAction { Path = args, CompressService = _compressService };
+                    action = ParseReadFileAction(args);
                     break;
                 case "RUN_COMMAND":
                     action = new RunCommandAction { Command = args };
@@ -120,7 +124,7 @@ public static class ToolFactory
             }
 
             // Move to the next potential tool
-            i = toolType == "CREATE_FILE" || toolType == "UPDATE_FILE" || toolType == "FINISH_TASK" || toolType == "UPDATE_TODOS" || toolType == "PATCH_FILE"
+            i = toolType == "CREATE_FILE" || toolType == "UPDATE_FILE" || toolType == "EDIT_FILE" || toolType == "FINISH_TASK" || toolType == "UPDATE_TODOS"
                 ? contentEndIndex
                 : i + 1;
         }
@@ -164,152 +168,49 @@ public static class ToolFactory
         // Default behavior if parsing fails
         return new ListFilesAction { Path = args };
     }
-
-    private static PatchFileAction ParsePatchFileAction(string filePath, string[] lines, int contentStartIndex, int contentEndIndex)
+    
+    private static ReadFileAction ParseReadFileAction(string args)
     {
-        var patchAction = new PatchFileAction { Path = filePath };
+        if (string.IsNullOrEmpty(args))
+            return new ReadFileAction { Path = "", CompressService = _compressService };
 
-        // Parse the new format with <<<< FIND / >>>> and <<<<< REPLACE / >>>>> blocks
-        var i = contentStartIndex;
-        while (i < contentEndIndex)
+        // Check if args contains lines parameter
+        var parts = args.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+
+        if (parts.Length == 1)
         {
-            var line = lines[i].Trim();
-            
-            // Look for FIND block markers
-            if (line.StartsWith("<<<<") || line.StartsWith("- ") || line.StartsWith("-"))
-            {
-                var patch = ParseSinglePatch(lines, ref i, contentEndIndex);
-                if (patch != null)
-                {
-                    patchAction.Patches.Add(patch);
-                }
-            }
-            else
-            {
-                i++;
-            }
+            // Just a path, no line range
+            return new ReadFileAction { Path = parts[0], CompressService = _compressService };
+        }
+        else if (parts.Length == 2 && parts[1].StartsWith("lines:"))
+        {
+            // Path and line range
+            var lineRange = parts[1].Substring("lines:".Length);
+            return new ReadFileAction { Path = parts[0], LineRange = lineRange, CompressService = _compressService };
         }
 
-        return patchAction;
+        // Default behavior if parsing fails - treat entire args as path
+        return new ReadFileAction { Path = args, CompressService = _compressService };
+    }
+    
+    private static EditFileAction ParseEditFileAction(string args, string content)
+    {
+        // Parse format: "file_path instruction" or just "file_path"
+        var parts = args.Split(new[] { ' ' }, 2, StringSplitOptions.RemoveEmptyEntries);
+        
+        if (parts.Length == 1)
+        {
+            // No instruction provided, default to append
+            return new EditFileAction { Path = parts[0], Instruction = "append", Content = content };
+        }
+        else if (parts.Length == 2)
+        {
+            // Path and instruction provided
+            return new EditFileAction { Path = parts[0], Instruction = parts[1], Content = content };
+        }
+
+        // Default behavior if parsing fails
+        return new EditFileAction { Path = args, Instruction = "append", Content = content };
     }
 
-    private static SmartPatchOperation? ParseSinglePatch(string[] lines, ref int index, int contentEndIndex)
-    {
-        var currentLine = lines[index].Trim();
-        
-        // Handle legacy format (- and +)
-        if (currentLine.StartsWith("- ") || currentLine.StartsWith("-"))
-        {
-            return ParseLegacyPatch(lines, ref index, contentEndIndex);
-        }
-        
-        // Handle new format with <<<< blocks
-        if (currentLine.StartsWith("<<<<"))
-        {
-            return ParseNewFormatPatch(lines, ref index, contentEndIndex);
-        }
-        
-        index++;
-        return null;
-    }
-
-    private static SmartPatchOperation? ParseLegacyPatch(string[] lines, ref int index, int contentEndIndex)
-    {
-        var findContent = new List<string>();
-        var replaceContent = new List<string>();
-        var inRemoveSection = true;
-        
-        // Parse remove section
-        while (index < contentEndIndex && (lines[index].StartsWith("- ") || lines[index].StartsWith("-")))
-        {
-            var content = lines[index].StartsWith("- ") ? lines[index].Substring(2) : lines[index].Substring(1);
-            findContent.Add(content);
-            index++;
-        }
-        
-        // Parse add section
-        while (index < contentEndIndex && (lines[index].StartsWith("+ ") || lines[index].StartsWith("+")))
-        {
-            var content = lines[index].StartsWith("+ ") ? lines[index].Substring(2) : lines[index].Substring(1);
-            replaceContent.Add(content);
-            index++;
-        }
-        
-        if (findContent.Count == 0)
-            return null;
-            
-        return new SmartPatchOperation
-        {
-            MatchType = PatchMatchType.Exact,
-            FindContent = string.Join(Environment.NewLine, findContent),
-            ReplaceContent = string.Join(Environment.NewLine, replaceContent)
-        };
-    }
-
-    private static SmartPatchOperation? ParseNewFormatPatch(string[] lines, ref int index, int contentEndIndex)
-    {
-        var currentLine = lines[index].Trim();
-        
-        // Determine match type from the FIND marker
-        PatchMatchType matchType = PatchMatchType.Exact;
-        if (currentLine.Contains("FIND_FUZZY"))
-            matchType = PatchMatchType.Fuzzy;
-        else if (currentLine.Contains("FIND_REGEX"))
-            matchType = PatchMatchType.Regex;
-        
-        index++; // Move past the <<<< FIND line
-        
-        // Collect FIND content until we hit >>>>
-        var findContent = new List<string>();
-        while (index < contentEndIndex && !lines[index].Trim().StartsWith(">>>>"))
-        {
-            findContent.Add(lines[index]);
-            index++;
-        }
-        
-        if (index >= contentEndIndex || !lines[index].Trim().StartsWith(">>>>"))
-        {
-            // Malformed - missing closing >>>>
-            throw new ArgumentException("Malformed PATCH_FILE: Missing >>>> to close FIND block");
-        }
-        
-        index++; // Move past the >>>> line
-        
-        // Look for <<<<< REPLACE
-        while (index < contentEndIndex && !lines[index].Trim().StartsWith("<<<<<"))
-        {
-            index++;
-        }
-        
-        if (index >= contentEndIndex || !lines[index].Trim().Contains("REPLACE"))
-        {
-            // Malformed - missing REPLACE block
-            throw new ArgumentException("Malformed PATCH_FILE: Missing <<<<< REPLACE block");
-        }
-        
-        index++; // Move past the <<<<< REPLACE line
-        
-        // Collect REPLACE content until we hit >>>>>
-        var replaceContent = new List<string>();
-        while (index < contentEndIndex && !lines[index].Trim().StartsWith(">>>>>"))
-        {
-            replaceContent.Add(lines[index]);
-            index++;
-        }
-        
-        if (index >= contentEndIndex || !lines[index].Trim().StartsWith(">>>>>"))
-        {
-            // Malformed - missing closing >>>>>
-            throw new ArgumentException("Malformed PATCH_FILE: Missing >>>>> to close REPLACE block");
-        }
-        
-        index++; // Move past the >>>>> line
-        
-        return new SmartPatchOperation
-        {
-            MatchType = matchType,
-            FindContent = string.Join(Environment.NewLine, findContent),
-            ReplaceContent = string.Join(Environment.NewLine, replaceContent)
-        };
-    }
 }

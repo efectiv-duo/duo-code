@@ -13,8 +13,23 @@ namespace duo_code
         {
             try
             {
+                // Check if running as subagent
+                bool isSubagent = args.Contains("--subagent");
+                string? subagentPrompt = null;
+                
+                if (isSubagent)
+                {
+                    // Find the prompt argument (everything after --subagent)
+                    var subagentIndex = Array.IndexOf(args, "--subagent");
+                    if (subagentIndex >= 0 && subagentIndex < args.Length - 1)
+                    {
+                        subagentPrompt = args[subagentIndex + 1];
+                    }
+                }
+                
                 // TODO: remove this before release
-                Directory.SetCurrentDirectory(@"C:\Work\Efectiv Duo\clients\helpship\helpship.web");
+                Directory.SetCurrentDirectory("C:\\Work\\Efectiv Duo\\projects\\duo-code");
+                // Directory.SetCurrentDirectory(@"C:\Work\Efectiv Duo\clients\helpship\helpship.web");
 
                 // Initialize configuration
                 var config = new ConfigurationService();
@@ -47,7 +62,7 @@ namespace duo_code
                     CurrentModel = config.Settings.Models.DefaultModel
                 };
 
-                // Create and run agent service
+                // Create agent service
                 var agentService = new AgentService(
                     commandRegistry,
                     toolRegistry,
@@ -56,7 +71,16 @@ namespace duo_code
                     conversationState
                 );
 
-                await agentService.RunAsync();
+                if (isSubagent && !string.IsNullOrWhiteSpace(subagentPrompt))
+                {
+                    // Subagent mode - process the given prompt and exit
+                    await agentService.ProcessSubagentPromptAsync(subagentPrompt);
+                }
+                else
+                {
+                    // Normal interactive mode
+                    await agentService.RunAsync();
+                }
             }
             catch (Exception ex)
             {

@@ -5,7 +5,7 @@ namespace duo_code.Tools;
 public class CreateFileAction : ToolActionBase
 {
     public override string ToolName => "CREATE_FILE";
-    public override string Description => @"Create a new file with specified content.
+    public override string Description => @"Create a new file with specified content. Will override existing files.
 Format:
 CREATE_FILE: file_path
 file_content";

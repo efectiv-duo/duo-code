@@ -6,137 +6,107 @@ namespace duo_code.Tools;
 public class FindAction : ToolActionBase
 {
     public override string ToolName => "FIND";
-    public override string Description => @"Search files or directories recursively. Wildcards: * ?
+    public override string Description => @"Find files recursively. Simple wildcards: * and ?
+Examples: *.cs, **/PatchFile*.cs, Test*.js
 Format:
 FIND: pattern";
     
     public string Pattern { get; set; } = string.Empty;
     
-    // Common directories to ignore
-    private static readonly HashSet<string> IgnoredDirs = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "node_modules", "vendor", "packages", "bin", "obj",
-        "dist", "build", "out", "target", "__pycache__", 
-        "venv", "env", "bower_components", "jspm_packages", 
-        "pkg", "Pods", "deps", "_build"
-    };
     
     protected override string ExecuteCore(string baseDirectory)
     {
         if (string.IsNullOrWhiteSpace(Pattern))
-            throw new ArgumentException("Search pattern cannot be empty");
+            return "Error: Pattern cannot be empty";
 
-        var output = new StringBuilder();
-        output.AppendLine($"FIND: {Pattern}");
-        
-        var rootDir = new DirectoryInfo(baseDirectory);
         var results = new List<string>();
         
-        // Search recursively
-        SearchDirectory(rootDir, rootDir.FullName, Pattern, results);
-        
-        // Sort results for consistency
+        try
+        {
+            // Get all files recursively, respecting .gitignore
+            var allFiles = Directory.EnumerateFiles(baseDirectory, "*", SearchOption.AllDirectories)
+                .Where(f => !GitignoreUtils.ShouldIgnoreFile(f, baseDirectory));
+
+            foreach (var file in allFiles)
+            {
+                var relativePath = Path.GetRelativePath(baseDirectory, file).Replace('\\', '/');
+                if (MatchesPattern(relativePath, Pattern))
+                {
+                    results.Add(relativePath);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            return $"Error searching: {ex.Message}";
+        }
+
         results.Sort();
         
-        // Output results
+        var output = new StringBuilder();
+        output.AppendLine($"Executed FIND: {Pattern}");
+        
         if (results.Count == 0)
         {
             output.AppendLine("No matches found");
         }
         else
         {
-            const int maxResults = 300;
-            var resultsToShow = Math.Min(results.Count, maxResults);
-            
-            for (int i = 0; i < resultsToShow; i++)
+            var showCount = Math.Min(results.Count, 150);
+            for (int i = 0; i < showCount; i++)
             {
                 output.AppendLine(results[i]);
             }
             
-            if (results.Count > maxResults)
+            if (results.Count > 150)
             {
-                output.AppendLine($"\n... +{results.Count - maxResults} more results");
+                output.AppendLine($"... +{results.Count - 150} more results");
             }
         }
         
-        // Summary
-        var dirCount = results.Count(r => r.EndsWith("/"));
-        var fileCount = results.Count - dirCount;
-        output.AppendLine($"\nFound: {dirCount} dirs, {fileCount} files");
-        
+        output.AppendLine($"\nFound {results.Count} files");
         return output.ToString();
     }
     
-    private void SearchDirectory(DirectoryInfo dir, string rootPath, string pattern, List<string> results)
+    
+    private bool MatchesPattern(string path, string pattern)
     {
-        try
+        // Handle ** (recursive directory wildcard)
+        if (pattern.Contains("**/"))
         {
-            // Search for matching files in current directory
-            var matchingFiles = dir.GetFiles(pattern);
-            foreach (var file in matchingFiles)
+            var parts = pattern.Split(new[] { "**/" }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 1)
             {
-                var relativePath = GetRelativePath(rootPath, file.FullName);
-                results.Add(relativePath);
+                // Pattern like "**/filename.cs" 
+                return MatchesSimplePattern(Path.GetFileName(path), parts[0]);
             }
-            
-            // Search for matching directories
-            var matchingDirs = dir.GetDirectories(pattern)
-                .Where(d => !ShouldIgnoreDirectory(d.Name));
-            foreach (var matchingDir in matchingDirs)
+            else if (parts.Length == 2)
             {
-                var relativePath = GetRelativePath(rootPath, matchingDir.FullName);
-                results.Add(relativePath + "/");
-            }
-            
-            // Recursively search subdirectories
-            var subDirs = dir.GetDirectories()
-                .Where(d => !ShouldIgnoreDirectory(d.Name));
-            foreach (var subDir in subDirs)
-            {
-                SearchDirectory(subDir, rootPath, pattern, results);
+                // Pattern like "dir/**/filename.cs"
+                return path.StartsWith(parts[0]) && MatchesSimplePattern(Path.GetFileName(path), parts[1]);
             }
         }
-        catch
-        {
-            // Ignore access errors
-        }
-    }
-    
-    private bool ShouldIgnoreDirectory(string dirName)
-    {
-        return dirName.StartsWith('.') || IgnoredDirs.Contains(dirName);
-    }
-    
-    private string GetRelativePath(string rootPath, string fullPath)
-    {
-        var relativePath = Path.GetRelativePath(rootPath, fullPath);
-        return relativePath.Replace('\\', '/'); // Use forward slashes for consistency
-    }
-    
-    protected override string? CreateSummary(string fullResult)
-    {
-        var lines = fullResult.Split('\n');
         
-        // If result is reasonably small, don't summarize
-        if (lines.Length <= 30) return null;
-        
-        // Take first 20 lines and the summary
-        var truncatedLines = new List<string>();
-        truncatedLines.AddRange(lines.Take(20));
-        
-        // Find the Found line (usually near the end)
-        var foundLine = lines.LastOrDefault(l => l.StartsWith("Found:"));
-        if (foundLine != null)
+        // Simple pattern matching (no directory separators)
+        if (!pattern.Contains('/'))
         {
-            truncatedLines.Add($"... {lines.Length - 21} more results");
-            truncatedLines.Add(foundLine);
-        }
-        else
-        {
-            truncatedLines.Add($"... {lines.Length - 20} more results");
+            return MatchesSimplePattern(Path.GetFileName(path), pattern);
         }
         
-        return string.Join('\n', truncatedLines);
+        // Full path pattern matching
+        return MatchesSimplePattern(path, pattern);
+    }
+    
+    private bool MatchesSimplePattern(string text, string pattern)
+    {
+        // Convert simple glob pattern to regex
+        var regexPattern = "^" + pattern
+            .Replace(".", "\\.")
+            .Replace("*", ".*")
+            .Replace("?", ".") + "$";
+        
+        return System.Text.RegularExpressions.Regex.IsMatch(text, regexPattern, 
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
     }
     
     public override string ToString()

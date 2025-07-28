@@ -32,41 +32,44 @@ namespace duo_code.Services
             _logger = new ConversationLogger();
         }
 
+        public async Task ProcessSubagentPromptAsync(string prompt)
+        {
+            // Process the prompt directly (starter messages built dynamically)
+            await ProcessUserMessageAsync(prompt);
+        }
+
         public async Task RunAsync()
         {
             _console.ShowWelcomeMessage();
 
-            // Add system context message at the start
-            BuildStarterMessages();
-
-            try
+            while (_state.IsRunning)
             {
-                while (_state.IsRunning)
+                try
                 {
-                    try
+                    var (input, modeSwitch) = await _console.GetUserInputAsync(_state.CurrentMode);
+                        
+                    // Handle mode switch
+                    if (modeSwitch.HasValue)
                     {
-                        var input = await _console.GetUserInputAsync();
-                        if (string.IsNullOrWhiteSpace(input)) continue;
-
-                        if (input.StartsWith('/'))
-                        {
-                            await HandleCommandAsync(input);
-                        }
-                        else
-                        {
-                            await ProcessUserMessageAsync(input);
-                        }
+                        _state.CurrentMode = modeSwitch.Value;
+                        continue;
                     }
-                    catch (Exception ex)
+                        
+                    if (string.IsNullOrWhiteSpace(input)) continue;
+
+                    if (input.StartsWith('/'))
                     {
-                        _console.ShowError($"Error: {ex.Message}");
+                        await HandleCommandAsync(input);
+                    }
+                    else
+                    {
+                        await ProcessUserMessageAsync(input);
                     }
                 }
-            }
-            finally
-            {
-                // Save conversation when exiting
-                _logger.SaveConversation(_state.Messages);
+                catch (Exception ex)
+                {
+                    _console.ShowError($"Error: {ex.Message}");
+                }
             }
         }
 
@@ -115,6 +118,8 @@ namespace duo_code.Services
             while (!taskCompleted)
             {
                 var messageHistory = BuildMessageHistory();
+
+                _logger.SaveConversation(messageHistory);
 
                 using var cts = new CancellationTokenSource();
                 _console.SetupCancellation(cts);
@@ -202,58 +207,40 @@ namespace duo_code.Services
                     };
                     _state.Messages.Add(toolResultsMessage);
                 }
+                else
+                {
+                    _console.ShowAssistantResponse(response.Content);
+
+                    finishTaskFound = true;
+                }
                 
                 // Save conversation after each assistant response
                 _logger.SaveConversation(_state.Messages);
                 
+                // Wait for user input before continuing (unless task is finished)
+                //if (!finishTaskFound)
+                //{
+                //    var shouldContinue = _console.WaitForContinueOrCancel();
+                //    if (!shouldContinue)
+                //    {
+                //        return true; // Exit the loop as if task was completed
+                //    }
+                //}
+                
                 return finishTaskFound;
-            });
-        }
-
-        private void BuildStarterMessages()
-        {
-            var contextBuilder = new ContextBuilder();
-            var contextFactory = new CodebaseContextFactory(Directory.GetCurrentDirectory());
-
-            _state.Messages.Add(new Message
-            {
-                Role = "system",
-                Content = contextBuilder.BuildContext()
-            });
-
-            _state.Messages.Add(new Message
-            {
-                Role = "user",
-                Content = "Analyze the current directory context."
-            });
-
-            _state.Messages.Add(new Message
-            {
-                Role = "assistant",
-                Content = "STARTER_CONTEXT: ."
-            });
-
-            var context = contextFactory.CreateContext();
-
-            _state.Messages.Add(new Message
-            {
-                Role = "user",
-                Content = context.ToJson()
-            });
-
-            _state.Messages.Add(new Message
-            {
-                Role = "assistant",
-                Content = @"FINISH_TASK:
-Current directory context analyzed."
             });
         }
 
         private List<Message> BuildMessageHistory()
         {
             var history = new List<Message>();
+            
+            // Add dynamic starter messages first
+            var starterMessages = BuildDynamicStarterMessages();
+            history.AddRange(starterMessages);
+            
+            // Add user conversation messages
             var messageCount = _state.Messages.Count;
-
             for (int i = 0; i < messageCount; i++)
             {
                 var message = _state.Messages[i];
@@ -267,6 +254,47 @@ Current directory context analyzed."
             }
 
             return history;
+        }
+
+        private List<Message> BuildDynamicStarterMessages()
+        {
+            var contextBuilder = new ContextBuilder();
+            var contextFactory = new CodebaseContextFactory(Directory.GetCurrentDirectory());
+
+            var starterMessages = new List<Message>
+            {
+                new Message
+                {
+                    Role = "system",
+                    Content = contextBuilder.BuildContext(_state.CurrentMode)
+                },
+                new Message
+                {
+                    Role = "user",
+                    Content = "Analyze the current directory context."
+                },
+                new Message
+                {
+                    Role = "assistant",
+                    Content = "STARTER_CONTEXT: ."
+                }
+            };
+
+            var context = contextFactory.CreateContext();
+            starterMessages.Add(new Message
+            {
+                Role = "user",
+                Content = context.ToJson()
+            });
+
+            starterMessages.Add(new Message
+            {
+                Role = "assistant",
+                Content = @"FINISH_TASK:
+Current directory context analyzed."
+            });
+
+            return starterMessages;
         }
 
         private void RefreshApiServiceIfNeeded()
