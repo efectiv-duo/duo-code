@@ -10,9 +10,9 @@ public class UpdateFileAction : ToolActionBase
 Format:
 UPDATE_FILE: file_path
 @@ -1,3 +1,4 @@
- Line 1
+Line 1
 +Line 1.5
- Line 2
+Line 2
 -Line 3
 +Line Three";
 
