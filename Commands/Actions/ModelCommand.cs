@@ -6,11 +6,13 @@ using duo_code.Services;
 
 namespace duo_code.Commands.Actions
 {
-    public class ModelCommand : ICommand
+    public class ModelCommand : ICommand, IHasAliases
     {
         public string Name => "model";
         public string Description => "Change the AI model and provider";
         public CommandType Type => CommandType.Action;
+        public string[] GetAliases() => new[] { "m" };
+
 
         public Task<CommandResult> ExecuteAsync(string[] args)
         {
@@ -31,10 +33,10 @@ namespace duo_code.Commands.Actions
                     ApiSettings.CurrentProvider = provider;
                     var models = ApiSettings.AvailableModels[provider];
                     ApiSettings.CurrentModel = models.First();
-                    
+
                     // Save the settings
                     ApiKeyManager.SaveCurrentSettings(ApiSettings.CurrentProvider, ApiSettings.CurrentModel);
-                    
+
                     return Task.FromResult(CommandResult.Ok($"Provider changed to: {provider}\nModel set to: {ApiSettings.CurrentModel}"));
                 }
 
@@ -47,10 +49,10 @@ namespace duo_code.Commands.Actions
             {
                 ApiSettings.CurrentProvider = modelInfo.Provider;
                 ApiSettings.CurrentModel = modelInfo.Model;
-                
+
                 // Save the settings
                 ApiKeyManager.SaveCurrentSettings(ApiSettings.CurrentProvider, ApiSettings.CurrentModel);
-                
+
                 return Task.FromResult(CommandResult.Ok($"Provider: {modelInfo.Provider}\nModel changed to: {modelInfo.Model}"));
             }
 

@@ -5,11 +5,12 @@ using System.Text;
 
 namespace duo_code.Commands.Actions;
 
-public class ChallengeCommand : ICommand
+public class ChallengeCommand : ICommand, IHasAliases
 {
     public string Name => "challenge";
     public string Description => "Manage coding challenges for testing AI agent capabilities";
     public CommandType Type => CommandType.Action;
+    public string[] GetAliases() => new[] { "c", "ch" };
     
     private static readonly string ProgressFilePath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),

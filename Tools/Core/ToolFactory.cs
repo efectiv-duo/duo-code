@@ -116,6 +116,7 @@ public static class ToolFactory
 
             if (action != null)
             {
+                ToolAnalytics.LogToolUsage(toolType);
                 actions.Add(action);
             }
 
