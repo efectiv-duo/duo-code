@@ -2,6 +2,7 @@ using duo_code.Commands.Core;
 using duo_code.Models;
 using duo_code.Tools.Core;
 using duo_code.Services.Interfaces;
+using Spectre.Console;
 
 namespace duo_code.Services
 {
@@ -155,14 +156,18 @@ namespace duo_code.Services
                         Content = m.Content
                     }).ToList();
 
-                    _console.ShowInfo("Message sent to AI..."); // Print pre-thought content immediately
+                    await AnsiConsole.Status()
+                        .Spinner(Spinner.Known.Flip)
+                        .SpinnerStyle(Style.Parse("green bold"))
+                        .StartAsync("Waiting for a response...", async ctx =>
+                        {
+                            var processedResponse = await _apiService.GetAISuggestionAsync(cerebrasMessages, cts.Token, ApiSettings.CurrentModel, _console);
 
-                    var processedResponse = await _apiService.GetAISuggestionAsync(cerebrasMessages, cts.Token, ApiSettings.CurrentModel, _console);
-
-                    if (!string.IsNullOrWhiteSpace(processedResponse.Content))
-                    {
-                        taskCompleted = await ProcessAssistantResponseAsync(processedResponse);
-                    }
+                            if (!string.IsNullOrWhiteSpace(processedResponse?.Content))
+                            {
+                                taskCompleted = await ProcessAssistantResponseAsync(processedResponse);
+                            }
+                        });
                 }
                 catch (OperationCanceledException)
                 {
