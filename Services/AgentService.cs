@@ -12,7 +12,7 @@ namespace duo_code.Services
         private readonly CommandRegistry _commandRegistry;
         private readonly ToolRegistry _toolRegistry;
         private readonly StreamingResponseService _responseProcessor;
-        private readonly ConsoleInterface _console;
+        private readonly SpectreConsoleInterface _console;
         private readonly ConversationState _state;
         private readonly ConversationLogger _logger;
         private readonly IFileReferenceService _fileReferenceService;
@@ -21,7 +21,7 @@ namespace duo_code.Services
             CommandRegistry commandRegistry,
             ToolRegistry toolRegistry,
             StreamingResponseService responseProcessor,
-            ConsoleInterface console,
+            SpectreConsoleInterface console,
             ConversationState state,
             IFileReferenceService fileReferenceService = null)
         {
@@ -42,11 +42,11 @@ namespace duo_code.Services
             await ProcessUserMessageAsync(prompt);
         }
 
-        public async Task RunAsync()
+        public async Task RunAsync(CancellationToken cancellationToken = default)
         {
             _console.ShowWelcomeMessage();
 
-            while (_state.IsRunning)
+            while (_state.IsRunning && !cancellationToken.IsCancellationRequested)
             {
                 try
                 {
@@ -69,6 +69,11 @@ namespace duo_code.Services
                     {
                         await ProcessUserMessageAsync(input);
                     }
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    _console.ShowInfo("Operation cancelled. Exiting...");
+                    break;
                 }
                 catch (Exception ex)
                 {
@@ -150,9 +155,9 @@ namespace duo_code.Services
                         Content = m.Content
                     }).ToList();
 
-                    Console.WriteLine("Message sent ..."); // Print pre-thought content immediately
+                    _console.ShowInfo("Message sent to AI..."); // Print pre-thought content immediately
 
-                    var processedResponse = await _apiService.GetAISuggestionAsync(cerebrasMessages, cts.Token, ApiSettings.CurrentModel);
+                    var processedResponse = await _apiService.GetAISuggestionAsync(cerebrasMessages, cts.Token, ApiSettings.CurrentModel, _console);
 
                     if (!string.IsNullOrWhiteSpace(processedResponse.Content))
                     {

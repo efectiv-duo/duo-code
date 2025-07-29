@@ -19,7 +19,7 @@ public class GeminiApiService : IApiService
         _httpClient.Timeout = TimeSpan.FromMinutes(5);
     }
     
-    public async Task<ProcessedResponse> GetAISuggestionAsync(List<CerebrasMessage> messages, CancellationToken cancellationToken = default, string? model = null)
+    public async Task<ProcessedResponse> GetAISuggestionAsync(List<CerebrasMessage> messages, CancellationToken cancellationToken = default, string? model = null, SpectreConsoleInterface? console = null)
     {
         var apiUrl = $"{_baseUrl}?key={_apiKey}";
         
@@ -37,7 +37,7 @@ public class GeminiApiService : IApiService
         var response = await _httpClient.PostAsync(apiUrl, content, cancellationToken);
         response.EnsureSuccessStatusCode();
         
-        return await StreamingResponseProcessor.ProcessAsync(response, cancellationToken, ApiProvider.Gemini);
+        return await StreamingResponseProcessor.ProcessAsync(response, cancellationToken, ApiProvider.Gemini, console);
     }
     
     private GeminiRequest ConvertToGeminiRequest(List<CerebrasMessage> messages)
