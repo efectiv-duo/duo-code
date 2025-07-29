@@ -24,7 +24,6 @@ namespace duo_code.Tools.Core
             Register<ReadFileAction>();
             Register<CreateFileAction>();
             Register<UpdateFileAction>();
-            Register<EditFileAction>();
             Register<DeleteFileAction>();
             Register<CreateDirectoryAction>();
             Register<DeleteDirectoryAction>();
@@ -83,7 +82,7 @@ namespace duo_code.Tools.Core
             // Default mode has access to all core file and analysis tools
             var defaultTools = new HashSet<string>
             {
-                "LIST_FILES", "FIND", "SEARCH", "READ_FILE", "CREATE_FILE", "UPDATE_FILE", "EDIT_FILE",
+                "LIST_FILES", "FIND", "SEARCH", "READ_FILE", "CREATE_FILE", "UPDATE_FILE",
                 "DELETE_FILE", "CREATE_DIRECTORY", "DELETE_DIRECTORY", "RENAME_FILE", 
                 "RUN_COMMAND", "FINISH_TASK", "UPDATE_TODOS"
             };

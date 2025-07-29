@@ -49,7 +49,7 @@ public static class ToolFactory
             int contentEndIndex = contentStartIndex;
 
             // For tools that need content, find where the next tool starts
-            if (toolType == "CREATE_FILE" || toolType == "UPDATE_FILE" || toolType == "EDIT_FILE" || toolType == "FINISH_TASK" || toolType == "UPDATE_TODOS")
+            if (toolType == "CREATE_FILE" || toolType == "UPDATE_FILE" || toolType == "FINISH_TASK" || toolType == "UPDATE_TODOS")
             {
                 // Find the next tool command or end of input
                 while (contentEndIndex < lines.Length)
@@ -72,10 +72,6 @@ public static class ToolFactory
                     action = toolType == "CREATE_FILE"
                         ? new CreateFileAction { Path = args, Content = content }
                         : new UpdateFileAction { Path = args, Content = content };
-                    break;
-                case "EDIT_FILE":
-                    var editContent = string.Join(Environment.NewLine, lines.Skip(contentStartIndex).Take(contentEndIndex - contentStartIndex));
-                    action = ParseEditFileAction(args, editContent);
                     break;
 
 
@@ -125,7 +121,7 @@ public static class ToolFactory
             }
 
             // Move to the next potential tool
-            i = toolType == "CREATE_FILE" || toolType == "UPDATE_FILE" || toolType == "EDIT_FILE" || toolType == "FINISH_TASK" || toolType == "UPDATE_TODOS"
+            i = toolType == "CREATE_FILE" || toolType == "UPDATE_FILE" || toolType == "FINISH_TASK" || toolType == "UPDATE_TODOS"
                 ? contentEndIndex
                 : i + 1;
         }
@@ -193,25 +189,4 @@ public static class ToolFactory
         // Default behavior if parsing fails - treat entire args as path
         return new ReadFileAction { Path = args, CompressService = _compressService };
     }
-    
-    private static EditFileAction ParseEditFileAction(string args, string content)
-    {
-        // Parse format: "file_path instruction" or just "file_path"
-        var parts = args.Split(new[] { ' ' }, 2, StringSplitOptions.RemoveEmptyEntries);
-        
-        if (parts.Length == 1)
-        {
-            // No instruction provided, default to append
-            return new EditFileAction { Path = parts[0], Instruction = "append", Content = content };
-        }
-        else if (parts.Length == 2)
-        {
-            // Path and instruction provided
-            return new EditFileAction { Path = parts[0], Instruction = parts[1], Content = content };
-        }
-
-        // Default behavior if parsing fails
-        return new EditFileAction { Path = args, Instruction = "append", Content = content };
-    }
-
 }
