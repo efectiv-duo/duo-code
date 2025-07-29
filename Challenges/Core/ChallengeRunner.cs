@@ -1,19 +1,14 @@
-using System.Diagnostics;
 using System.Text;
 using duo_code.Services;
-using duo_code.Models;
-using duo_code.Tools.Core;
 
 namespace duo_code.Challenges.Core;
 
 public class ChallengeRunner
 {
-    private readonly CerebrasApiService _apiService;
     private readonly string _workspaceRoot;
     
-    public ChallengeRunner(CerebrasApiService apiService)
+    public ChallengeRunner()
     {
-        _apiService = apiService;
         _workspaceRoot = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
             ".duo-code",
@@ -21,9 +16,9 @@ public class ChallengeRunner
         );
     }
     
-    public async Task<BatchTestResult> RunAllChallengesAsync()
+    public async Task<List<(IChallenge challenge, ChallengeResult result)>> RunAllChallengesAsync()
     {
-        var result = new BatchTestResult();
+        var results = new List<(IChallenge challenge, ChallengeResult result)>();
         var challenges = ChallengeRegistry.GetAllChallenges().ToList();
         
         Console.WriteLine($"\n🚀 Running {challenges.Count} challenges...\n");
@@ -33,38 +28,27 @@ public class ChallengeRunner
             Console.WriteLine($"▶️  Challenge #{challenge.Id}: {challenge.Name}");
             
             var challengeResult = await RunSingleChallengeAsync(challenge);
-            result.ChallengeResults.Add(challengeResult);
+            results.Add((challenge, challengeResult));
             
             if (challengeResult.Success)
             {
                 Console.ForegroundColor = ConsoleColor.Green;
-                Console.WriteLine($"   ✅ PASSED - Score: {challengeResult.Score}/{challengeResult.MaxScore}");
+                Console.WriteLine($"   ✅ PASSED - Score: {challengeResult.Score}/100");
             }
             else
             {
                 Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine($"   ❌ FAILED - Score: {challengeResult.Score}/{challengeResult.MaxScore}");
+                Console.WriteLine($"   ❌ FAILED - Score: {challengeResult.Score}/100");
             }
             Console.ResetColor();
             Console.WriteLine();
         }
         
-        // Calculate final score
-        result.TotalChallenges = challenges.Count;
-        result.ChallengesPassed = result.ChallengeResults.Count(r => r.Success);
-        result.TotalScore = result.ChallengeResults.Sum(r => r.Score);
-        result.MaxPossibleScore = result.ChallengeResults.Sum(r => r.MaxScore);
-        result.FinalScore = result.MaxPossibleScore > 0 
-            ? (int)Math.Round((double)result.TotalScore / result.MaxPossibleScore * 100)
-            : 0;
-        
-        return result;
+        return results;
     }
     
-    private async Task<ChallengeResult> RunSingleChallengeAsync(IChallenge challenge)
+    public async Task<ChallengeResult> RunSingleChallengeAsync(IChallenge challenge)
     {
-        var stopwatch = Stopwatch.StartNew();
-        
         try
         {
             // Setup challenge workspace
@@ -79,9 +63,9 @@ public class ChallengeRunner
             Directory.CreateDirectory(workspaceDir);
             
             // Create challenge files
-            foreach (var file in challenge.Setup.RequiredFiles)
+            foreach (var (path, content) in challenge.SetupFiles)
             {
-                var filePath = Path.Combine(workspaceDir, file.Path);
+                var filePath = Path.Combine(workspaceDir, path);
                 var directory = Path.GetDirectoryName(filePath);
                 
                 if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
@@ -89,20 +73,14 @@ public class ChallengeRunner
                     Directory.CreateDirectory(directory);
                 }
                 
-                if (!file.IsDirectory)
-                {
-                    await File.WriteAllTextAsync(filePath, file.Content);
-                }
+                await File.WriteAllTextAsync(filePath, content);
             }
             
-            // Run AI on the challenge prompt
-            await RunAIOnPromptAsync(challenge.Setup.InitialPrompt, workspaceDir);
+            // Note: AI execution would happen here in actual implementation
+            // For now, just verify the initial state
             
             // Verify the solution
-            var result = await challenge.VerifyAsync(workspaceDir, new List<string>());
-            
-            stopwatch.Stop();
-            result.TimeTaken = stopwatch.Elapsed;
+            var result = await challenge.VerifyAsync(workspaceDir);
             
             return result;
         }
@@ -110,44 +88,28 @@ public class ChallengeRunner
         {
             return new ChallengeResult
             {
-                ChallengeId = challenge.Id,
                 Success = false,
                 Score = 0,
-                MaxScore = challenge.MaxScore,
-                Feedback = $"Error during challenge execution: {ex.Message}",
-                TimeTaken = stopwatch.Elapsed
+                Feedback = $"Error during challenge execution: {ex.Message}"
             };
         }
     }
     
-    private async Task RunAIOnPromptAsync(string prompt, string workingDirectory)
-    {
-        // TODO: Refactor to use new AgentService architecture
-        // await Program.RunAgent(workingDirectory, prompt);
-        await Task.CompletedTask;
-    }    
-}
-
-public class BatchTestResult
-{
-    public List<ChallengeResult> ChallengeResults { get; set; } = new();
-    public int TotalChallenges { get; set; }
-    public int ChallengesPassed { get; set; }
-    public int TotalScore { get; set; }
-    public int MaxPossibleScore { get; set; }
-    public int FinalScore { get; set; } // 0-100
-    public DateTime TestRunDate { get; set; } = DateTime.UtcNow;
-    
-    public string GenerateReport()
+    public string GenerateReport(List<(IChallenge challenge, ChallengeResult result)> results)
     {
         var report = new StringBuilder();
         report.AppendLine("\n📊 CHALLENGE TEST REPORT");
         report.AppendLine("=" + new string('=', 50));
-        report.AppendLine($"Date: {TestRunDate:yyyy-MM-dd HH:mm} UTC");
-        report.AppendLine($"Total Challenges: {TotalChallenges}");
-        report.AppendLine($"Passed: {ChallengesPassed}/{TotalChallenges} ({(double)ChallengesPassed/TotalChallenges*100:F1}%)");
-        report.AppendLine($"Total Score: {TotalScore}/{MaxPossibleScore}");
-        report.AppendLine($"\n🎯 FINAL SCORE: {FinalScore}/100");
+        report.AppendLine($"Date: {DateTime.UtcNow:yyyy-MM-dd HH:mm} UTC");
+        
+        var totalChallenges = results.Count;
+        var challengesPassed = results.Count(r => r.result.Success);
+        var totalScore = results.Sum(r => r.result.Score);
+        var averageScore = totalChallenges > 0 ? totalScore / totalChallenges : 0;
+        
+        report.AppendLine($"Total Challenges: {totalChallenges}");
+        report.AppendLine($"Passed: {challengesPassed}/{totalChallenges} ({(double)challengesPassed/totalChallenges*100:F1}%)");
+        report.AppendLine($"\n🎯 AVERAGE SCORE: {averageScore}/100");
         report.AppendLine("\n" + new string('=', 50));
         
         return report.ToString();

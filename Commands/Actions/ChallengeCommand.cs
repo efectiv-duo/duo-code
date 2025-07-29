@@ -67,12 +67,12 @@ Subcommands:
                 if (attempt.Completed)
                 {
                     status = "✅";
-                    score = $" [{attempt.BestScore}/{challenge.MaxScore}]";
+                    score = $" [{attempt.BestScore}/100]";
                 }
                 else if (attempt.Attempts > 0)
                 {
                     status = "🔄";
-                    score = $" [{attempt.BestScore}/{challenge.MaxScore}]";
+                    score = $" [{attempt.BestScore}/100]";
                 }
             }
             
@@ -125,9 +125,9 @@ Subcommands:
         Directory.CreateDirectory(workspaceDir);
         
         // Set up challenge files
-        foreach (var file in challenge.Setup.RequiredFiles)
+        foreach (var (path, content) in challenge.SetupFiles)
         {
-            var filePath = Path.Combine(workspaceDir, file.Path);
+            var filePath = Path.Combine(workspaceDir, path);
             var directory = Path.GetDirectoryName(filePath);
             
             if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
@@ -135,36 +135,32 @@ Subcommands:
                 Directory.CreateDirectory(directory);
             }
             
-            if (!file.IsDirectory)
-            {
-                await File.WriteAllTextAsync(filePath, file.Content);
-            }
+            await File.WriteAllTextAsync(filePath, content);
         }
         
         var output = new StringBuilder();
         output.AppendLine($"\n🚀 Running Challenge #{challenge.Id}: {challenge.Name}\n");
         output.AppendLine($"Difficulty: {GetDifficultyBar(challenge.DifficultyLevel)} ({challenge.DifficultyLevel}/100)");
-        output.AppendLine($"Max Score: {challenge.MaxScore} points\n");
         output.AppendLine("📝 Description:");
         output.AppendLine(challenge.Description);
         output.AppendLine();
         output.AppendLine("🎯 Task:");
-        output.AppendLine(challenge.Setup.InitialPrompt);
+        output.AppendLine(challenge.InitialPrompt);
         output.AppendLine();
         output.AppendLine($"📁 Workspace: {workspaceDir}\n");
         
         Console.WriteLine(output.ToString());
         
         // TODO: Refactor to use new AgentService architecture  
-        // await Program.RunAgent(workspaceDir, challenge.Setup.InitialPrompt);
+        // await Program.RunAgent(workspaceDir, challenge.InitialPrompt);
         await Task.CompletedTask;
         
         // Verify the solution
-        var result = await challenge.VerifyAsync(workspaceDir, new List<string>());
+        var result = await challenge.VerifyAsync(workspaceDir);
         
         // Update progress
         var progress = await ChallengeProgress.LoadAsync(ProgressFilePath);
-        progress.RecordAttempt(challenge.Id, result.Success, result.Score, result.TimeTaken);
+        progress.RecordAttempt(challenge.Id, result.Success, result.Score, TimeSpan.Zero);
         await progress.SaveAsync(ProgressFilePath);
         
         // Display results
@@ -172,11 +168,11 @@ Subcommands:
         resultOutput.AppendLine("\n🔍 Verification Results:");
         if (result.Success)
         {
-            resultOutput.AppendLine($"✅ Challenge PASSED! Score: {result.Score}/{result.MaxScore}");
+            resultOutput.AppendLine($"✅ Challenge PASSED! Score: {result.Score}/100");
         }
         else
         {
-            resultOutput.AppendLine($"❌ Challenge FAILED. Score: {result.Score}/{result.MaxScore}");
+            resultOutput.AppendLine($"❌ Challenge FAILED. Score: {result.Score}/100");
         }
         resultOutput.AppendLine(result.Feedback);
         
@@ -233,7 +229,7 @@ Subcommands:
                 if (challenge != null)
                 {
                     var status = attempt.Completed ? "✅" : "🔄";
-                    output.AppendLine($"  {status} #{challenge.Id:D3} - {challenge.Name} [{attempt.BestScore}/{challenge.MaxScore}]");
+                    output.AppendLine($"  {status} #{challenge.Id:D3} - {challenge.Name} [{attempt.BestScore}/100]");
                 }
             }
         }
@@ -292,18 +288,18 @@ Subcommands:
         var output = new StringBuilder();
         output.AppendLine($"\n📋 Challenge #{challenge.Id}: {challenge.Name}\n");
         output.AppendLine($"Difficulty: {GetDifficultyBar(challenge.DifficultyLevel)} ({challenge.DifficultyLevel}/100)");
-        output.AppendLine($"Max Score: {challenge.MaxScore} points");
+        output.AppendLine($"Max Score: 100 points");
         output.AppendLine();
         output.AppendLine("📝 Description:");
         output.AppendLine(challenge.Description);
         output.AppendLine();
         output.AppendLine("🎯 Task:");
-        output.AppendLine(challenge.Setup.InitialPrompt);
+        output.AppendLine(challenge.InitialPrompt);
         output.AppendLine();
         output.AppendLine("📁 Files Created:");
-        foreach (var file in challenge.Setup.RequiredFiles.Where(f => !f.IsDirectory))
+        foreach (var (path, _) in challenge.SetupFiles)
         {
-            output.AppendLine($"  • {file.Path}");
+            output.AppendLine($"  • {path}");
         }
         
         var progress = await ChallengeProgress.LoadAsync(ProgressFilePath);
@@ -312,7 +308,7 @@ Subcommands:
             output.AppendLine();
             output.AppendLine("📊 Your Progress:");
             output.AppendLine($"  Status: {(attempt.Completed ? "✅ Completed" : "🔄 In Progress")}");
-            output.AppendLine($"  Best Score: {attempt.BestScore}/{challenge.MaxScore}");
+            output.AppendLine($"  Best Score: {attempt.BestScore}/100");
             output.AppendLine($"  Attempts: {attempt.Attempts}");
             if (attempt.Completed && attempt.CompletedDate.HasValue)
             {
@@ -325,22 +321,14 @@ Subcommands:
     
     private async Task<CommandResult> RunAllChallenges()
     {
-        // TODO: Get API service through dependency injection
-        CerebrasApiService? apiService = null; // Program.ApiService;
-        
-        if (apiService == null)
-        {
-            return CommandResult.Error("API service not initialized.");
-        }
-        
-        var runner = new ChallengeRunner(apiService);
+        var runner = new ChallengeRunner();
         
         Console.WriteLine("\n🏃 Starting automated challenge run...");
         Console.WriteLine("This will test the AI agent on all challenges.\n");
         
         try
         {
-            var result = await runner.RunAllChallengesAsync();
+            var results = await runner.RunAllChallengesAsync();
             
             // Save the report
             var reportPath = Path.Combine(
@@ -349,15 +337,15 @@ Subcommands:
                 $"test-report-{DateTime.UtcNow:yyyyMMdd-HHmmss}.txt"
             );
             
-            var report = result.GenerateReport();
+            var report = runner.GenerateReport(results);
             await File.WriteAllTextAsync(reportPath, report);
             
             // Update progress
             var progress = await ChallengeProgress.LoadAsync(ProgressFilePath);
-            foreach (var challengeResult in result.ChallengeResults)
+            foreach (var (challenge, result) in results)
             {
-                progress.RecordAttempt(challengeResult.ChallengeId, challengeResult.Success, 
-                    challengeResult.Score, challengeResult.TimeTaken);
+                progress.RecordAttempt(challenge.Id, result.Success, 
+                    result.Score, TimeSpan.Zero);
             }
             await progress.SaveAsync(ProgressFilePath);
             
@@ -365,7 +353,10 @@ Subcommands:
             Console.WriteLine(report);
             Console.WriteLine($"\n📄 Full report saved to: {reportPath}");
             
-            return CommandResult.Ok($"Challenge run completed. Final score: {result.FinalScore}/100");
+            var totalPassed = results.Count(r => r.result.Success);
+            var avgScore = results.Any() ? results.Sum(r => r.result.Score) / results.Count : 0;
+            
+            return CommandResult.Ok($"Challenge run completed. {totalPassed}/{results.Count} passed. Average score: {avgScore}/100");
         }
         catch (Exception ex)
         {
