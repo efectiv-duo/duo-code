@@ -5,11 +5,22 @@ namespace duo_code.Services;
 
 public static class ToolAnalytics
 {
-    private static readonly string StatsFilePath = "tool_usage_stats.json";
+    private static readonly string StatsFilePath = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+        ".duocode",
+        "tool_usage_stats.json"
+    );
     private static Dictionary<string, int> _usageStats = new();
 
     static ToolAnalytics()
     {
+        // Ensure the .duocode directory exists
+        var directory = Path.GetDirectoryName(StatsFilePath);
+        if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+        
         LoadStatsFromFile();
     }
 
