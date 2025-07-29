@@ -6,13 +6,15 @@ namespace duo_code.Tools;
 public class UpdateFileAction : ToolActionBase
 {
     public override string ToolName => "UPDATE_FILE";
-    public override string Description => @"Apply diff format changes to a file. Powered by TextDiff.Sharp library.
+    public override string Description => @"Applies Unified Diff format changes to a file.
 Format:
 UPDATE_FILE: file_path
- context line (unchanged)
--removed line
-+added line
- context line (unchanged)";
+@@ -1,3 +1,4 @@
+ Line 1
++Line 1.5
+ Line 2
+-Line 3
++Line Three";
 
     public string Path { get; set; } = string.Empty;
     public string Content { get; set; } = string.Empty; // This will hold the diff text
