@@ -1,7 +1,6 @@
 using duo_code.Commands.Core;
 using duo_code.Challenges.Core;
 using duo_code.Models;
-using duo_code.Services;
 using System.Text;
 
 namespace duo_code.Commands.Actions;
@@ -364,7 +363,7 @@ Subcommands:
         }
     }
     
-    private string GetDifficultyBar(int difficulty)
+    private static string GetDifficultyBar(int difficulty)
     {
         var filled = difficulty / 20;
         var empty = 5 - filled;

@@ -24,7 +24,6 @@ namespace duo_code.Tools.Core
             Register<ReadFileAction>();
             Register<CreateFileAction>();
             Register<UpdateFileAction>();
-            Register<EditFileAction>();
             Register<DeleteFileAction>();
             Register<CreateDirectoryAction>();
             Register<DeleteDirectoryAction>();
