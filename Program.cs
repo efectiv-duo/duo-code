@@ -2,6 +2,7 @@ using System;
 using System.Threading.Tasks;
 using duo_code.Services;
 using duo_code.Services.Configuration;
+using duo_code.Services.Interfaces;
 using duo_code.Commands.Core;
 using duo_code.Tools.Core;
 
@@ -28,7 +29,7 @@ namespace duo_code
                 }
                 
                 // TODO: remove this before release
-                Directory.SetCurrentDirectory("C:\\Work\\Efectiv Duo\\projects\\duo-code");
+                // Directory.SetCurrentDirectory("C:\\Work\\Efectiv Duo\\projects\\duo-code");
                 // Directory.SetCurrentDirectory(@"C:\Work\Efectiv Duo\clients\helpship\helpship.web");
 
                 // Initialize configuration
@@ -57,6 +58,7 @@ namespace duo_code
                 var toolRegistry = new ToolRegistry();
                 var responseProcessor = new StreamingResponseService();
                 var consoleInterface = new ConsoleInterface();
+                var fileReferenceService = new FileReferenceService();
                 var conversationState = new ConversationState
                 {
                     CurrentModel = config.Settings.Models.DefaultModel
@@ -68,7 +70,8 @@ namespace duo_code
                     toolRegistry,
                     responseProcessor,
                     consoleInterface,
-                    conversationState
+                    conversationState,
+                    fileReferenceService
                 );
 
                 if (isSubagent && !string.IsNullOrWhiteSpace(subagentPrompt))

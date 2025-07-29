@@ -1,6 +1,7 @@
 using duo_code.Commands.Core;
 using duo_code.Models;
 using duo_code.Tools.Core;
+using duo_code.Services.Interfaces;
 
 namespace duo_code.Services
 {
@@ -14,13 +15,15 @@ namespace duo_code.Services
         private readonly ConsoleInterface _console;
         private readonly ConversationState _state;
         private readonly ConversationLogger _logger;
+        private readonly IFileReferenceService _fileReferenceService;
 
         public AgentService(
             CommandRegistry commandRegistry,
             ToolRegistry toolRegistry,
             StreamingResponseService responseProcessor,
             ConsoleInterface console,
-            ConversationState state)
+            ConversationState state,
+            IFileReferenceService fileReferenceService = null)
         {
             _currentProvider = ApiSettings.CurrentProvider;
             _apiService = ApiServiceFactory.CreateApiService(_currentProvider);
@@ -30,6 +33,7 @@ namespace duo_code.Services
             _console = console;
             _state = state;
             _logger = new ConversationLogger();
+            _fileReferenceService = fileReferenceService ?? new FileReferenceService();
         }
 
         public async Task ProcessSubagentPromptAsync(string prompt)
@@ -111,7 +115,17 @@ namespace duo_code.Services
 
         private async Task ProcessUserMessageAsync(string userInput)
         {
-            _state.Messages.Add(new Message { Role = "user", Content = userInput });
+            // Process file references in user input
+            var fileReferenceResult = await _fileReferenceService.ProcessFileReferencesAsync(userInput);
+            
+            // Add user message
+            _state.Messages.Add(new Message { Role = "user", Content = fileReferenceResult.ProcessedUserContent });
+            
+            // Add system message with file references if any exist
+            if (fileReferenceResult.HasFileReferences && !string.IsNullOrEmpty(fileReferenceResult.SystemMessageContent))
+            {
+                _state.Messages.Add(new Message { Role = "system", Content = fileReferenceResult.SystemMessageContent });
+            }
 
             // Continue prompting until FINISH_TASK is received
             bool taskCompleted = false;
