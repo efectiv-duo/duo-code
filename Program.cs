@@ -88,6 +88,7 @@ namespace duo_code
                 var toolRegistry = new ToolRegistry();
                 var responseProcessor = new StreamingResponseService();
                 var consoleInterface = new SpectreConsoleInterface();
+                consoleInterface.SetCommandRegistry(commandRegistry);
                 var fileReferenceService = new FileReferenceService();
                 var conversationState = new ConversationState
                 {

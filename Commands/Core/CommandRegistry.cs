@@ -112,5 +112,10 @@ namespace duo_code.Commands.Core
                 }
             }
         }
+
+        public IEnumerable<string> GetAllCommandNames()
+        {
+            return _commands.Keys.OrderBy(x => x);
+        }
     }
 }

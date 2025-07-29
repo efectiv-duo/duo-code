@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using duo_code.Models;
+using duo_code.Commands.Core;
 using Spectre.Console;
 
 namespace duo_code.Services
@@ -10,6 +11,7 @@ namespace duo_code.Services
     {
         private static readonly string[] ThinkingFrames = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" };
         private CancellationTokenSource? _thinkingCancellation;
+        private CommandRegistry? _commandRegistry;
 
         public void ShowWelcomeMessage()
         {
@@ -21,7 +23,8 @@ namespace duo_code.Services
             
             var panel = new Panel(new Markup(
                 "[dim]Type [bold]/help[/] for available commands or [bold]/exit[/] to quit.[/]\n" +
-                "[dim]Use [bold cyan]Shift+Tab[/] to switch between modes.[/]"))
+                "[dim]Use [bold cyan]Shift+Tab[/] to switch between modes.[/]\n" +
+                "[dim]Navigation: [bold green]↑↓[/] for history, [bold green]←→[/] for cursor, [bold green]Tab[/] for completion[/]"))
             {
                 Header = new PanelHeader("[green]Welcome[/]"),
                 Border = BoxBorder.Rounded,
@@ -35,61 +38,277 @@ namespace duo_code.Services
             AnsiConsole.WriteLine();
         }
 
+        private readonly List<string> _commandHistory = new();
+        private int _historyIndex = -1;
+        
+        public void SetCommandRegistry(CommandRegistry commandRegistry)
+        {
+            _commandRegistry = commandRegistry;
+        }
+        
         public async Task<(string input, Mode? modeSwitch)> GetUserInputAsync(Mode currentMode)
         {
-            // Handle custom key input for mode switching
-            var input = await Task.Run(() =>
-            {
-                var line = "";
-                ConsoleKeyInfo keyInfo;
-                
-                Console.Write($"[{currentMode.ToDisplayString()}]> ");
-                
-                while (true)
-                {
-                    keyInfo = Console.ReadKey(true);
-                    
-                    // Check for Shift+Tab
-                    if (keyInfo.Key == ConsoleKey.Tab && keyInfo.Modifiers == ConsoleModifiers.Shift)
-                    {
-                        return "SWITCH_MODE";
-                    }
-                    
-                    // Handle backspace
-                    if (keyInfo.Key == ConsoleKey.Backspace)
-                    {
-                        if (line.Length > 0)
-                        {
-                            line = line[..^1];
-                            Console.Write("\b \b");
-                        }
-                        continue;
-                    }
-                    
-                    // Handle enter
-                    if (keyInfo.Key == ConsoleKey.Enter)
-                    {
-                        Console.WriteLine();
-                        return line;
-                    }
-                    
-                    // Handle regular characters
-                    if (!char.IsControl(keyInfo.KeyChar))
-                    {
-                        line += keyInfo.KeyChar;
-                        Console.Write(keyInfo.KeyChar);
-                    }
-                }
-            });
+            LoadCommandHistory();
             
-            if (input == "SWITCH_MODE")
+            return await Task.Run(() => GetUserInputWithCustomHandling(currentMode));
+        }
+        
+        private (string input, Mode? modeSwitch) GetUserInputWithCustomHandling(Mode currentMode)
+        {
+            var customInput = new CustomTextInput(_commandRegistry, _commandHistory, currentMode);
+            var result = customInput.ReadInput();
+            
+            // Handle mode switching
+            if (result.input == "SWITCH_MODE")
             {
                 var nextMode = GetNextMode(currentMode);
-                ShowInfo($"Switched to {nextMode.ToDisplayString()} mode");
+                ShowModeSwitch(nextMode);
                 return ("", nextMode);
             }
             
-            return (input ?? string.Empty, null);
+            // Save command history
+            if (!string.IsNullOrWhiteSpace(result.input))
+            {
+                SaveCommandHistory();
+            }
+            
+            return result;
+        }
+        
+        private void RedrawLine(string line, int cursorPosition, int promptLength)
+        {
+            // Clear the current line
+            Console.SetCursorPosition(promptLength, Console.CursorTop);
+            Console.Write(new string(' ', Console.WindowWidth - promptLength - 1));
+            Console.SetCursorPosition(promptLength, Console.CursorTop);
+            
+            // Write the new line
+            Console.Write(line);
+            
+            // Position cursor correctly
+            Console.SetCursorPosition(promptLength + cursorPosition, Console.CursorTop);
+        }
+        
+        private void AddToHistory(string command)
+        {
+            // Don't add duplicate consecutive commands
+            if (_commandHistory.Count == 0 || _commandHistory[^1] != command)
+            {
+                _commandHistory.Add(command);
+                
+                // Keep history size manageable
+                if (_commandHistory.Count > 1000)
+                {
+                    _commandHistory.RemoveAt(0);
+                }
+            }
+        }
+        
+        private string? GetPreviousCommand()
+        {
+            if (_commandHistory.Count == 0) return null;
+            
+            if (_historyIndex == -1)
+            {
+                _historyIndex = _commandHistory.Count - 1;
+            }
+            else if (_historyIndex > 0)
+            {
+                _historyIndex--;
+            }
+            
+            return _historyIndex >= 0 ? _commandHistory[_historyIndex] : null;
+        }
+        
+        private string? GetNextCommand()
+        {
+            if (_commandHistory.Count == 0 || _historyIndex == -1) return null;
+            
+            _historyIndex++;
+            
+            if (_historyIndex >= _commandHistory.Count)
+            {
+                _historyIndex = -1;
+                return null;
+            }
+            
+            return _commandHistory[_historyIndex];
+        }
+        
+        private void LoadCommandHistory()
+        {
+            try
+            {
+                var historyPath = GetHistoryFilePath();
+                if (File.Exists(historyPath))
+                {
+                    var lines = File.ReadAllLines(historyPath);
+                    _commandHistory.Clear();
+                    _commandHistory.AddRange(lines.Where(l => !string.IsNullOrWhiteSpace(l)));
+                }
+            }
+            catch
+            {
+                // Ignore errors loading history
+            }
+        }
+        
+        private void SaveCommandHistory()
+        {
+            try
+            {
+                var historyPath = GetHistoryFilePath();
+                var directory = Path.GetDirectoryName(historyPath);
+                if (directory != null && !Directory.Exists(directory))
+                {
+                    Directory.CreateDirectory(directory);
+                }
+                
+                // Save last 500 commands
+                var commandsToSave = _commandHistory.TakeLast(500);
+                File.WriteAllLines(historyPath, commandsToSave);
+            }
+            catch
+            {
+                // Ignore errors saving history
+            }
+        }
+        
+        private string GetHistoryFilePath()
+        {
+            var homeDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            return Path.Combine(homeDirectory, ".duo-code-history");
+        }
+        
+        private string? GetCompletion(string line, int cursorPosition)
+        {
+            if (_commandRegistry == null || !line.StartsWith('/')) return null;
+            
+            // Only complete commands at the beginning
+            var commandPart = line[1..]; // Remove the '/' prefix
+            var spaceIndex = commandPart.IndexOf(' ');
+            
+            // Only complete if cursor is in the command name part (before first space)
+            if (spaceIndex > 0 && cursorPosition > spaceIndex + 1) return null;
+            
+            var commandPrefix = spaceIndex > 0 ? commandPart[..spaceIndex] : commandPart;
+            
+            var availableCommands = _commandRegistry.GetCommandList()
+                .Select(cmd => cmd.name)
+                .Where(name => name.StartsWith(commandPrefix, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(name => name)
+                .ToList();
+            
+            if (availableCommands.Count == 1)
+            {
+                // Single match - complete it
+                var completion = availableCommands[0];
+                var remainder = spaceIndex > 0 ? commandPart[spaceIndex..] : "";
+                return "/" + completion + remainder;
+            }
+            else if (availableCommands.Count > 1)
+            {
+                // Multiple matches - show them
+                ShowCompletionOptions(availableCommands, commandPrefix);
+                
+                // Find common prefix
+                var commonPrefix = FindCommonPrefix(availableCommands);
+                if (commonPrefix.Length > commandPrefix.Length)
+                {
+                    var remainder = spaceIndex > 0 ? commandPart[spaceIndex..] : "";
+                    return "/" + commonPrefix + remainder;
+                }
+            }
+            
+            return null;
+        }
+        
+        private void ShowCompletionOptions(List<string> options, string prefix)
+        {
+            Console.WriteLine();
+            
+            var table = new Table();
+            table.Border = TableBorder.None;
+            table.ShowHeaders = false;
+            
+            // Show completions in columns
+            var columns = Math.Min(3, options.Count);
+            for (int i = 0; i < columns; i++)
+            {
+                table.AddColumn("");
+            }
+            
+            for (int i = 0; i < options.Count; i += columns)
+            {
+                var row = new string[columns];
+                for (int j = 0; j < columns && i + j < options.Count; j++)
+                {
+                    var option = options[i + j];
+                    // Highlight the matching prefix
+                    var highlighted = $"[green]{prefix}[/]{option[prefix.Length..]}";
+                    row[j] = highlighted;
+                }
+                table.AddRow(row);
+            }
+            
+            AnsiConsole.Write(table);
+        }
+        
+        private string FindCommonPrefix(List<string> strings)
+        {
+            if (strings.Count == 0) return "";
+            if (strings.Count == 1) return strings[0];
+            
+            var commonPrefix = strings[0];
+            for (int i = 1; i < strings.Count; i++)
+            {
+                commonPrefix = GetCommonPrefix(commonPrefix, strings[i]);
+                if (commonPrefix.Length == 0) break;
+            }
+            
+            return commonPrefix;
+        }
+        
+        private string GetCommonPrefix(string str1, string str2)
+        {
+            var minLength = Math.Min(str1.Length, str2.Length);
+            var commonLength = 0;
+            
+            for (int i = 0; i < minLength; i++)
+            {
+                if (char.ToLowerInvariant(str1[i]) == char.ToLowerInvariant(str2[i]))
+                {
+                    commonLength++;
+                }
+                else
+                {
+                    break;
+                }
+            }
+            
+            return str1[..commonLength];
+        }
+        
+        private string GetStyledPrompt(Mode currentMode)
+        {
+            return currentMode switch
+            {
+                Mode.Default => "[bold cyan][[DEFAULT]][/]> ",
+                Mode.Planning => "[bold yellow][[PLANNING]][/]> ",
+                Mode.Orchestrator => "[bold magenta][[ORCHESTRATOR]][/]> ",
+                _ => "[bold white][[UNKNOWN]][/]> "
+            };
+        }
+        
+        private int GetPromptLength(Mode currentMode)
+        {
+            return currentMode switch
+            {
+                Mode.Default => "[DEFAULT]> ".Length,
+                Mode.Planning => "[PLANNING]> ".Length,
+                Mode.Orchestrator => "[ORCHESTRATOR]> ".Length,
+                _ => "[UNKNOWN]> ".Length
+            };
         }
 
         private Mode GetNextMode(Mode currentMode)
@@ -147,6 +366,26 @@ namespace duo_code.Services
         public void ShowInfo(string info)
         {
             AnsiConsole.WriteLine(info, Style.Parse("dim"));
+        }
+        
+        public void ShowModeSwitch(Mode newMode)
+        {
+            var modeColor = newMode switch
+            {
+                Mode.Default => "cyan",
+                Mode.Planning => "yellow", 
+                Mode.Orchestrator => "magenta",
+                _ => "white"
+            };
+            
+            var panel = new Panel(new Text($"Switched to {newMode.ToDisplayString()} mode"))
+            {
+                Header = new PanelHeader($"[{modeColor}]Mode Switch[/]"),
+                Border = BoxBorder.Rounded,
+                BorderStyle = Style.Parse(modeColor)
+            };
+            
+            AnsiConsole.Write(panel);
         }
 
         public void ShowThinking()
