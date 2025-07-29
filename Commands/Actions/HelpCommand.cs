@@ -2,13 +2,15 @@ using duo_code.Commands.Core;
 
 namespace duo_code.Commands.Actions;
 
-public class HelpCommand : ICommand
+public class HelpCommand : ICommand, IHasAliases
 {
     private readonly CommandRegistry _registry;
     
     public string Name => "help";
     public string Description => "Show available commands";
     public CommandType Type => CommandType.Action;
+    public string[] GetAliases() => new[] { "h", "?" };
+
     
     public HelpCommand(CommandRegistry registry)
     {

@@ -39,6 +39,7 @@ namespace duo_code.Commands.Core
             Register(new ExitCommand());
             Register(new ChallengeCommand());
             Register(new ApiKeyCommand());
+            Register(new StatsCommand());
         }
 
         private void LoadPromptCommands()
@@ -49,7 +50,7 @@ namespace duo_code.Commands.Core
             }
 
             var mdFiles = Directory.GetFiles(_promptsDirectory, "*.md");
-            
+
             foreach (var file in mdFiles)
             {
                 try
@@ -67,25 +68,33 @@ namespace duo_code.Commands.Core
         private void Register(ICommand command)
         {
             _commands[command.Name] = command;
-            
+
             // Register aliases if command has them
-            if (command is ModelCommand modelCmd)
+
+            // if (command is ModelCommand modelCmd)
+            // {
+            //     _commands["m"] = modelCmd;
+            // }
+            // else if (command is HelpCommand helpCmd)
+            // {
+            //     _commands["h"] = helpCmd;
+            //     _commands["?"] = helpCmd;
+            // }
+            // else if (command is ExitCommand exitCmd)
+            // {
+            //     _commands["quit"] = exitCmd;
+            //     _commands["q"] = exitCmd;
+            // }
+            // else if (command is ClearCommand clearCmd)
+            // {
+            //     _commands["cls"] = clearCmd;
+            // }
+            if (command is IHasAliases aliasCommand)
             {
-                _commands["m"] = modelCmd;
-            }
-            else if (command is HelpCommand helpCmd)
-            {
-                _commands["h"] = helpCmd;
-                _commands["?"] = helpCmd;
-            }
-            else if (command is ExitCommand exitCmd)
-            {
-                _commands["quit"] = exitCmd;
-                _commands["q"] = exitCmd;
-            }
-            else if (command is ClearCommand clearCmd)
-            {
-                _commands["cls"] = clearCmd;
+                foreach (var alias in aliasCommand.GetAliases())
+                {
+                    _commands[alias] = command;
+                }
             }
         }
 

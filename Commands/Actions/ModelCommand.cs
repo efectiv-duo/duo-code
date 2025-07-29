@@ -7,11 +7,12 @@ using Spectre.Console;
 
 namespace duo_code.Commands.Actions
 {
-    public class ModelCommand : ICommand
+    public class ModelCommand : ICommand, IHasAliases
     {
         public string Name => "model";
         public string Description => "Change the AI model and provider";
         public CommandType Type => CommandType.Action;
+        public string[] GetAliases() => new[] { "m" };
 
         public Task<CommandResult> ExecuteAsync(string[] args)
         {

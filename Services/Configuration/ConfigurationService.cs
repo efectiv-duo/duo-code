@@ -23,6 +23,7 @@ namespace duo_code.Services.Configuration
             // Check multiple locations for config file
             var locations = new[]
             {
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".duocode", ConfigFileName),
                 Path.Combine(Directory.GetCurrentDirectory(), ConfigFileName),
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "DuoCode", ConfigFileName),
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config", "duo-code", ConfigFileName)
@@ -34,7 +35,7 @@ namespace duo_code.Services.Configuration
                     return location;
             }
 
-            // Default to current directory
+            // Default to .duocode folder in user profile
             return locations[0];
         }
 
