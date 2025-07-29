@@ -1,9 +1,5 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using duo_code.Models;
-using duo_code.Tools;
+using System.Text;
 
 namespace duo_code.Tools.Core
 {
@@ -30,7 +26,7 @@ namespace duo_code.Tools.Core
             Register<RenameFileAction>();
             Register<RunCommandAction>();
             Register<EndTurnAction>();
-            Register<UpdateTodosAction>();
+            Register<NotesAction>();
             Register<SpawnSubagentAction>();
         }
 
@@ -82,9 +78,9 @@ namespace duo_code.Tools.Core
             // Default mode has access to all core file and analysis tools
             var defaultTools = new HashSet<string>
             {
-                "LIST_FILES", "FIND", "SEARCH", "READ_FILE", "CREATE_FILE", "UPDATE_FILE",
-                "DELETE_FILE", "CREATE_DIRECTORY", "DELETE_DIRECTORY", "RENAME_FILE", 
-                "RUN_COMMAND", "FINISH_TASK", "UPDATE_TODOS"
+                "LIST_FILES", "FIND", "SEARCH", "READ_FILE", "GIT_SUMMARY", "CREATE_FILE", "UPDATE_FILE",
+                "DELETE_FILE", "CREATE_DIRECTORY", "DELETE_DIRECTORY", "RENAME_FILE",
+                "RUN_COMMAND", "FINISH_TASK", "NOTES"
             };
             return defaultTools.Contains(toolName);
         }
@@ -94,7 +90,7 @@ namespace duo_code.Tools.Core
             // Planning mode has access to read-only tools and planning tools
             var planningTools = new HashSet<string>
             {
-                "LIST_FILES", "FIND", "SEARCH", "READ_FILE", "FINISH_TASK", "UPDATE_TODOS"
+                "LIST_FILES", "FIND", "SEARCH", "READ_FILE", "FINISH_TASK", "NOTES"
             };
             return planningTools.Contains(toolName);
         }
@@ -104,7 +100,7 @@ namespace duo_code.Tools.Core
             // Orchestrator mode can spawn subagents and use basic analysis tools
             var orchestratorTools = new HashSet<string>
             {
-                "LIST_FILES", "FIND", "SEARCH", "READ_FILE", "SPAWN_SUBAGENT", "FINISH_TASK", "UPDATE_TODOS"
+                "LIST_FILES", "FIND", "SEARCH", "READ_FILE", "SPAWN_SUBAGENT", "FINISH_TASK", "NOTES"
             };
             return orchestratorTools.Contains(toolName);
         }

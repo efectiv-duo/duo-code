@@ -1,5 +1,4 @@
 using duo_code.Services;
-using duo_code.Tools;
 
 namespace duo_code.Tools.Core;
 
@@ -49,7 +48,7 @@ public static class ToolFactory
             int contentEndIndex = contentStartIndex;
 
             // For tools that need content, find where the next tool starts
-            if (toolType == "CREATE_FILE" || toolType == "UPDATE_FILE" || toolType == "FINISH_TASK" || toolType == "UPDATE_TODOS")
+            if (toolType == "CREATE_FILE" || toolType == "UPDATE_FILE" || toolType == "FINISH_TASK" || toolType == "NOTES")
             {
                 // Find the next tool command or end of input
                 while (contentEndIndex < lines.Length)
@@ -73,8 +72,6 @@ public static class ToolFactory
                         ? new CreateFileAction { Path = args, Content = content }
                         : new UpdateFileAction { Path = args, Content = content };
                     break;
-
-
                 case "DELETE_FILE":
                     action = new DeleteFileAction { Path = args };
                     break;
@@ -108,9 +105,9 @@ public static class ToolFactory
                     if (paths.Length != 2) throw new ArgumentException("Invalid RENAME_FILE format. Use 'old_path > new_path'");
                     action = new RenameFileAction { OldPath = paths[0].Trim(), NewPath = paths[1].Trim() };
                     break;
-                case "UPDATE_TODOS":
-                    var todoList = string.Join(Environment.NewLine, lines.Skip(contentStartIndex).Take(contentEndIndex - contentStartIndex));
-                    action = new UpdateTodosAction { TodoList = todoList };
+                case "NOTES":
+                    var notes = string.Join(Environment.NewLine, lines.Skip(contentStartIndex).Take(contentEndIndex - contentStartIndex));
+                    action = new NotesAction { Notes = notes };
                     break;
             }
 
@@ -121,7 +118,7 @@ public static class ToolFactory
             }
 
             // Move to the next potential tool
-            i = toolType == "CREATE_FILE" || toolType == "UPDATE_FILE" || toolType == "FINISH_TASK" || toolType == "UPDATE_TODOS"
+            i = toolType == "CREATE_FILE" || toolType == "UPDATE_FILE" || toolType == "FINISH_TASK" || toolType == "NOTES"
                 ? contentEndIndex
                 : i + 1;
         }
@@ -165,28 +162,50 @@ public static class ToolFactory
         // Default behavior if parsing fails
         return new ListFilesAction { Path = args };
     }
-    
+
     private static ReadFileAction ParseReadFileAction(string args)
     {
         if (string.IsNullOrEmpty(args))
             return new ReadFileAction { Path = "", CompressService = _compressService };
 
-        // Check if args contains lines parameter
+        // Parse path and optional parameters (lines and purpose)
         var parts = args.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
 
-        if (parts.Length == 1)
+        if (parts.Length == 0)
+            return new ReadFileAction { Path = "", CompressService = _compressService };
+
+        var action = new ReadFileAction { Path = parts[0], CompressService = _compressService };
+
+        // Parse additional parameters
+        for (int i = 1; i < parts.Length; i++)
         {
-            // Just a path, no line range
-            return new ReadFileAction { Path = parts[0], CompressService = _compressService };
-        }
-        else if (parts.Length == 2 && parts[1].StartsWith("lines:"))
-        {
-            // Path and line range
-            var lineRange = parts[1].Substring("lines:".Length);
-            return new ReadFileAction { Path = parts[0], LineRange = lineRange, CompressService = _compressService };
+            if (parts[i].StartsWith("lines:"))
+            {
+                action.LineRange = parts[i].Substring("lines:".Length);
+            }
+            else if (parts[i].StartsWith("purpose:"))
+            {
+                // Purpose might contain spaces, so we need to collect all remaining parts
+                var purposeParts = new List<string> { parts[i].Substring("purpose:".Length) };
+
+                // Collect remaining parts that don't start with a known parameter
+                for (int j = i + 1; j < parts.Length; j++)
+                {
+                    if (!parts[j].StartsWith("lines:") && !parts[j].StartsWith("purpose:"))
+                    {
+                        purposeParts.Add(parts[j]);
+                        i = j; // Update i to skip processed parts
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+
+                action.Purpose = string.Join(" ", purposeParts);
+            }
         }
 
-        // Default behavior if parsing fails - treat entire args as path
-        return new ReadFileAction { Path = args, CompressService = _compressService };
+        return action;
     }
 }
