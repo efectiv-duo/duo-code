@@ -14,7 +14,18 @@ message_to_user";
     
     protected override string ExecuteCore(string baseDirectory)
     {
-        return Message; // The message is the result
+        // Check if we're running as a subagent
+        var args = Environment.GetCommandLineArgs();
+        bool isSubagent = args.Contains("--subagent");
+        
+        if (isSubagent)
+        {
+            // For subagents, write the result and exit the process
+            Console.WriteLine($"SUBAGENT_RESULT: {Message}");
+            Environment.Exit(0);
+        }
+        
+        return Message; // The message is the result for normal operation
     }
 
     public override string ToString()

@@ -13,14 +13,6 @@ LIST_FILES: path depth:N";
     public string Path { get; set; } = string.Empty;
     public int Depth { get; set; } = 1;
     
-    // Common directories to ignore
-    private static readonly HashSet<string> IgnoredDirs = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "node_modules", "vendor", "packages", "bin", "obj",
-        "dist", "build", "out", "target", "__pycache__", 
-        "venv", "env", "bower_components", "jspm_packages", 
-        "pkg", "Pods", "deps", "_build"
-    };
     
     protected override string ExecuteCore(string baseDirectory)
     {
@@ -28,7 +20,7 @@ LIST_FILES: path depth:N";
         if (!Directory.Exists(fullPath)) throw new DirectoryNotFoundException($"Directory not found: {Path}");
 
         var output = new StringBuilder();
-        output.AppendLine($"LIST_FILES: {Path} (depth={Depth})");
+        output.AppendLine($"Executed LIST_FILES: {Path} (depth={Depth})");
         
         var rootDir = new DirectoryInfo(fullPath);
         var allItems = new List<string>();
@@ -55,10 +47,11 @@ LIST_FILES: path depth:N";
     {
         // Get directories and files
         var directories = dir.GetDirectories()
-            .Where(d => !ShouldIgnoreDirectory(d.Name))
+            .Where(d => !ShouldIgnoreDirectory(d, relativePath))
             .OrderBy(d => d.Name);
             
         var files = dir.GetFiles()
+            .Where(f => !ShouldIgnoreFile(f, relativePath))
             .OrderBy(f => f.Name);
         
         // Add directories
@@ -82,9 +75,39 @@ LIST_FILES: path depth:N";
         }
     }
     
-    private bool ShouldIgnoreDirectory(string dirName)
+    private bool ShouldIgnoreDirectory(DirectoryInfo dir, string relativePath)
     {
-        return dirName.StartsWith('.') || IgnoredDirs.Contains(dirName);
+        // Always ignore .git and other dot directories
+        if (dir.Name.StartsWith('.')) return true;
+        
+        var fullPath = dir.FullName;
+        var baseDir = GetBaseDirectory(fullPath, relativePath, dir.Name);
+        return GitignoreUtils.ShouldIgnoreFile(fullPath, baseDir);
+    }
+    
+    private bool ShouldIgnoreFile(FileInfo file, string relativePath)
+    {
+        var fullPath = file.FullName;
+        var baseDir = GetBaseDirectory(fullPath, relativePath, file.Name);
+        return GitignoreUtils.ShouldIgnoreFile(fullPath, baseDir);
+    }
+    
+    private string GetBaseDirectory(string fullPath, string relativePath, string itemName)
+    {
+        // Calculate the base directory by removing the relative path portion
+        if (string.IsNullOrEmpty(relativePath))
+        {
+            return System.IO.Path.GetDirectoryName(fullPath) ?? fullPath;
+        }
+        
+        // Remove the relative path and item name to get the base directory
+        var pathToRemove = $"{relativePath}/{itemName}".Replace('/', System.IO.Path.DirectorySeparatorChar);
+        if (fullPath.EndsWith(pathToRemove))
+        {
+            return fullPath.Substring(0, fullPath.Length - pathToRemove.Length).TrimEnd(System.IO.Path.DirectorySeparatorChar);
+        }
+        
+        return System.IO.Path.GetDirectoryName(fullPath) ?? fullPath;
     }
     
     protected override string? CreateSummary(string fullResult)

@@ -1,0 +1,33 @@
+{
+  "Api": {
+    "BaseUrl": "https://api.cerebras.ai/v1",
+    "TimeoutSeconds": 300,
+    "ApiKeyPath": "~/.cerebras-api-key"
+  },
+  "Models": {
+    "DefaultModel": "qwen-3-235b-a22b",
+    "AvailableModels": [
+      "qwen-3-235b-a22b",
+      "qwen-3-32b",
+      "llama-4-maverick-17b-128e-instruct",
+      "llama-4-scout-17b-16e-instruct",
+      "deepseek-r1-distill-llama-70b"
+    ]
+  },
+  "Interface": {
+    "Colors": {
+      "User": "White",
+      "Assistant": "Yellow",
+      "Tool": "Cyan",
+      "Error": "Red",
+      "Info": "Gray"
+    },
+    "ShowThinkingIndicator": true,
+    "MaxMessageHistoryDisplay": 10
+  },
+  "Tools": {
+    "EnableJsonFormat": true,
+    "EnableLegacyFormat": true,
+    "MaxFileReadSize": 1000000
+  }
+}

@@ -1,4 +1,5 @@
 using duo_code.Services;
+using duo_code.Tools;
 
 namespace duo_code.Tools.Core;
 
@@ -48,7 +49,7 @@ public static class ToolFactory
             int contentEndIndex = contentStartIndex;
 
             // For tools that need content, find where the next tool starts
-            if (toolType == "CREATE_FILE" || toolType == "UPDATE_FILE" || toolType == "FINISH_TASK" || toolType == "UPDATE_TODOS")
+            if (toolType == "CREATE_FILE" || toolType == "UPDATE_FILE" || toolType == "EDIT_FILE" || toolType == "FINISH_TASK" || toolType == "UPDATE_TODOS")
             {
                 // Find the next tool command or end of input
                 while (contentEndIndex < lines.Length)
@@ -72,10 +73,11 @@ public static class ToolFactory
                         ? new CreateFileAction { Path = args, Content = content }
                         : new UpdateFileAction { Path = args, Content = content };
                     break;
-
-                case "PATCH_FILE":
-                    action = ParsePatchFileAction(args, lines, contentStartIndex, contentEndIndex);
+                case "EDIT_FILE":
+                    var editContent = string.Join(Environment.NewLine, lines.Skip(contentStartIndex).Take(contentEndIndex - contentStartIndex));
+                    action = ParseEditFileAction(args, editContent);
                     break;
+
 
                 case "DELETE_FILE":
                     action = new DeleteFileAction { Path = args };
@@ -92,8 +94,11 @@ public static class ToolFactory
                 case "FIND":
                     action = new FindAction { Pattern = args };
                     break;
+                case "SEARCH":
+                    action = new SearchAction { Pattern = args };
+                    break;
                 case "READ_FILE":
-                    action = new ReadFileAction { Path = args, CompressService = _compressService };
+                    action = ParseReadFileAction(args);
                     break;
                 case "RUN_COMMAND":
                     action = new RunCommandAction { Command = args };
@@ -119,7 +124,7 @@ public static class ToolFactory
             }
 
             // Move to the next potential tool
-            i = toolType == "CREATE_FILE" || toolType == "UPDATE_FILE" || toolType == "FINISH_TASK" || toolType == "UPDATE_TODOS" || toolType == "PATCH_FILE"
+            i = toolType == "CREATE_FILE" || toolType == "UPDATE_FILE" || toolType == "EDIT_FILE" || toolType == "FINISH_TASK" || toolType == "UPDATE_TODOS"
                 ? contentEndIndex
                 : i + 1;
         }
@@ -163,69 +168,49 @@ public static class ToolFactory
         // Default behavior if parsing fails
         return new ListFilesAction { Path = args };
     }
-
-    private static PatchFileAction ParsePatchFileAction(string filePath, string[] lines, int contentStartIndex, int contentEndIndex)
+    
+    private static ReadFileAction ParseReadFileAction(string args)
     {
-        var patchAction = new PatchFileAction { Path = filePath };
+        if (string.IsNullOrEmpty(args))
+            return new ReadFileAction { Path = "", CompressService = _compressService };
 
-        // Parse the patch content
-        for (int i = contentStartIndex; i < contentEndIndex; i++)
+        // Check if args contains lines parameter
+        var parts = args.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+
+        if (parts.Length == 1)
         {
-            var line = lines[i];
-            if (line.StartsWith("- "))
-            {
-                // Remove operation
-                patchAction.Patches.Add(new PatchOperation
-                {
-                    Operation = PatchOperationType.Remove,
-                    Content = line.Substring(2)
-                });
-            }
-            else if (line.StartsWith("+ "))
-            {
-                // Add operation
-                patchAction.Patches.Add(new PatchOperation
-                {
-                    Operation = PatchOperationType.Add,
-                    Content = line.Substring(2)
-                });
-            }
-            else if (line.StartsWith("-"))
-            {
-                // Multi-line remove - collect until we see something else
-                var removeContent = new List<string> { line.Substring(1) };
-                i++;
-                while (i < contentEndIndex && !lines[i].StartsWith("+") && !lines[i].StartsWith("-"))
-                {
-                    removeContent.Add(lines[i]);
-                    i++;
-                }
-                i--; // Back up one since the loop will increment
-                patchAction.Patches.Add(new PatchOperation
-                {
-                    Operation = PatchOperationType.Remove,
-                    Content = string.Join(Environment.NewLine, removeContent)
-                });
-            }
-            else if (line.StartsWith("+"))
-            {
-                // Multi-line add - collect until we see something else
-                var addContent = new List<string> { line.Substring(1) };
-                i++;
-                while (i < contentEndIndex && !lines[i].StartsWith("+") && !lines[i].StartsWith("-"))
-                {
-                    addContent.Add(lines[i]);
-                    i++;
-                }
-                i--; // Back up one since the loop will increment
-                patchAction.Patches.Add(new PatchOperation
-                {
-                    Operation = PatchOperationType.Add,
-                    Content = string.Join(Environment.NewLine, addContent)
-                });
-            }
+            // Just a path, no line range
+            return new ReadFileAction { Path = parts[0], CompressService = _compressService };
+        }
+        else if (parts.Length == 2 && parts[1].StartsWith("lines:"))
+        {
+            // Path and line range
+            var lineRange = parts[1].Substring("lines:".Length);
+            return new ReadFileAction { Path = parts[0], LineRange = lineRange, CompressService = _compressService };
         }
 
-        return patchAction;
+        // Default behavior if parsing fails - treat entire args as path
+        return new ReadFileAction { Path = args, CompressService = _compressService };
     }
+    
+    private static EditFileAction ParseEditFileAction(string args, string content)
+    {
+        // Parse format: "file_path instruction" or just "file_path"
+        var parts = args.Split(new[] { ' ' }, 2, StringSplitOptions.RemoveEmptyEntries);
+        
+        if (parts.Length == 1)
+        {
+            // No instruction provided, default to append
+            return new EditFileAction { Path = parts[0], Instruction = "append", Content = content };
+        }
+        else if (parts.Length == 2)
+        {
+            // Path and instruction provided
+            return new EditFileAction { Path = parts[0], Instruction = parts[1], Content = content };
+        }
+
+        // Default behavior if parsing fails
+        return new EditFileAction { Path = args, Instruction = "append", Content = content };
+    }
+
 }

@@ -211,7 +211,6 @@ public static class StreamingResponseProcessor
             // No unclosed thinking block, append to response
             var remaining = buffer.ToString();
             responseBuilder.Append(remaining);
-            Console.Write(remaining); // Print remaining content
         }
         else if (inThinkBlock && currentThinkingBuilder.Length > 0)
         {
@@ -254,7 +253,6 @@ public static class StreamingResponseProcessor
                     if (!string.IsNullOrEmpty(contentChunk))
                     {
                         buffer.Append(contentChunk);
-                        Console.Write(contentChunk); // Show content as it comes
                     }
                 }
             }

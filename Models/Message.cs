@@ -43,7 +43,7 @@ public class Message
             ? action.SummarizedResult 
             : action.FullResult;
             
-        return $"{action.ToolName}:\n{resultText}";
+        return $"{resultText}";
     }
 
     /// <summary>
@@ -65,7 +65,7 @@ public class Message
 
     private string GetUserMessageContent(int distanceToHead, int historyTotalLength)
     {
-        if (Actions == null || Actions.Count == 0)
+        // if (Actions == null || Actions.Count == 0)
             return Content;
 
         var shouldUseSummary = CalculateHistoricalDistance(distanceToHead, historyTotalLength) > 0.75;
@@ -75,7 +75,7 @@ public class Message
     private string GetAssistantMessageContent(int distanceToHead, int historyTotalLength)
     {
         // For the most recent assistant message, include thinking
-        if (distanceToHead == 0 && Thinking.Length > 0)
+        // if (distanceToHead == 0 && Thinking.Length > 0)
             return ContentWithThinking;
 
         return TruncateContent(distanceToHead, historyTotalLength);

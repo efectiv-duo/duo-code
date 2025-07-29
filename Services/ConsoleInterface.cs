@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using duo_code.Models;
 
 namespace duo_code.Services
 {
@@ -25,13 +26,74 @@ namespace duo_code.Services
             Console.ResetColor();
         }
 
-        public async Task<string> GetUserInputAsync()
+        public async Task<(string input, Mode? modeSwitch)> GetUserInputAsync(Mode currentMode)
         {
             Console.ForegroundColor = UserColor;
-            Console.Write("> ");
-            var input = await Task.Run(() => Console.ReadLine());
+            Console.Write($"[{currentMode.ToDisplayString()}]> ");
+            
+            var input = await Task.Run(() =>
+            {
+                var line = "";
+                ConsoleKeyInfo keyInfo;
+                
+                while (true)
+                {
+                    keyInfo = Console.ReadKey(true);
+                    
+                    // Check for Shift+Tab
+                    if (keyInfo.Key == ConsoleKey.Tab && keyInfo.Modifiers == ConsoleModifiers.Shift)
+                    {
+                        return "SWITCH_MODE";
+                    }
+                    
+                    // Handle backspace
+                    if (keyInfo.Key == ConsoleKey.Backspace)
+                    {
+                        if (line.Length > 0)
+                        {
+                            line = line[..^1];
+                            Console.Write("\b \b");
+                        }
+                        continue;
+                    }
+                    
+                    // Handle enter
+                    if (keyInfo.Key == ConsoleKey.Enter)
+                    {
+                        Console.WriteLine();
+                        return line;
+                    }
+                    
+                    // Handle regular characters
+                    if (!char.IsControl(keyInfo.KeyChar))
+                    {
+                        line += keyInfo.KeyChar;
+                        Console.Write(keyInfo.KeyChar);
+                    }
+                }
+            });
+            
             Console.ResetColor();
-            return input ?? string.Empty;
+            
+            if (input == "SWITCH_MODE")
+            {
+                var nextMode = GetNextMode(currentMode);
+                ShowInfo($"Switched to {nextMode.ToDisplayString()} mode");
+                return ("", nextMode);
+            }
+            
+            return (input ?? string.Empty, null);
+        }
+
+        private Mode GetNextMode(Mode currentMode)
+        {
+            return currentMode switch
+            {
+                Mode.Default => Mode.Planning,
+                Mode.Planning => Mode.Orchestrator,
+                Mode.Orchestrator => Mode.Default,
+                _ => Mode.Default
+            };
         }
 
         public void ShowAssistantResponse(string response)
@@ -88,6 +150,29 @@ namespace duo_code.Services
                 e.Cancel = true;
                 cts.Cancel();
             };
+        }
+
+        public bool WaitForContinueOrCancel()
+        {
+            Console.ForegroundColor = InfoColor;
+            Console.Write("\nPress [Space] to continue or [Esc] to cancel...");
+            Console.ResetColor();
+            
+            while (true)
+            {
+                var key = Console.ReadKey(true);
+                if (key.Key == ConsoleKey.Spacebar)
+                {
+                    Console.WriteLine(" [Continue]");
+                    return true;
+                }
+                else if (key.Key == ConsoleKey.Escape)
+                {
+                    Console.WriteLine(" [Cancelled]");
+                    return false;
+                }
+                // Ignore other keys and continue waiting
+            }
         }
     }
 }
