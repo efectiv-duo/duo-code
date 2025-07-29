@@ -37,7 +37,7 @@ namespace duo_code.Models
         {
             var builder = new StringBuilder();
 
-            builder.AppendLine(@"You are a coding assistant.");
+            builder.AppendLine(@"You are an agent.");
             builder.AppendLine(@"Use the FINISH_TASK tool when you have completed all your tasks.");
             builder.AppendLine();
             builder.AppendLine("## Core Loop");
