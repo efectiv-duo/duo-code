@@ -11,6 +11,13 @@ public class FileReferenceService : IFileReferenceService
         @"@(?<path>[^\s:]+)(?::(?<startLine>\d+)(?:-(?<endLine>\d+))?)?",
         RegexOptions.Compiled | RegexOptions.IgnoreCase
     );
+    
+    private readonly FileSearchService _fileSearchService;
+
+    public FileReferenceService()
+    {
+        _fileSearchService = new FileSearchService();
+    }
 
     public async Task<FileReferenceResult> ProcessFileReferencesAsync(string input)
     {
@@ -86,7 +93,22 @@ public class FileReferenceService : IFileReferenceService
         var resolvedPath = ResolvePath(path);
         if (!File.Exists(resolvedPath))
         {
-            throw new FileNotFoundException($"File not found: {path}");
+            // Try to find a similar file using search
+            var baseDirectory = Directory.GetCurrentDirectory();
+            var searchResults = _fileSearchService.SearchFiles(path, baseDirectory, 1);
+            
+            if (searchResults.Count > 0)
+            {
+                resolvedPath = Path.Combine(baseDirectory, searchResults[0].RelativePath);
+                if (!File.Exists(resolvedPath))
+                {
+                    throw new FileNotFoundException($"File not found: {path}. Did you mean: {searchResults[0].RelativePath}?");
+                }
+            }
+            else
+            {
+                throw new FileNotFoundException($"File not found: {path}");
+            }
         }
 
         // Read file content
