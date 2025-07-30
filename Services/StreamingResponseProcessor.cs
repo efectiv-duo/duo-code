@@ -17,17 +17,18 @@ public static class StreamingResponseProcessor
     /// <param name="httpResponse">The HttpResponseMessage from the API.</param>
     /// <param name="cancellationToken">Token to cancel the operation.</param>
     /// <param name="provider">The API provider to determine parsing format.</param>
+    /// <param name="console">Console interface for displaying messages.</param>
     /// <returns>ProcessedResponse containing the response and thinking content.</returns>
-    public static async Task<ProcessedResponse> ProcessAsync(HttpResponseMessage httpResponse, CancellationToken cancellationToken = default, ApiProvider? provider = null)
+    public static async Task<ProcessedResponse> ProcessAsync(HttpResponseMessage httpResponse, CancellationToken cancellationToken = default, ApiProvider? provider = null, SpectreConsoleInterface? console = null)
     {
         // Auto-detect provider if not specified
         var detectedProvider = provider ?? DetectProvider(httpResponse);
         
         return detectedProvider switch
         {
-            ApiProvider.Gemini => await ProcessGeminiStreamAsync(httpResponse, cancellationToken),
-            ApiProvider.Cerebras => await ProcessCerebrasStreamAsync(httpResponse, cancellationToken),
-            _ => await ProcessCerebrasStreamAsync(httpResponse, cancellationToken) // Default to Cerebras
+            ApiProvider.Gemini => await ProcessGeminiStreamAsync(httpResponse, cancellationToken, console),
+            ApiProvider.Cerebras => await ProcessCerebrasStreamAsync(httpResponse, cancellationToken, console),
+            _ => await ProcessCerebrasStreamAsync(httpResponse, cancellationToken, console) // Default to Cerebras
         };
     }
 
@@ -45,7 +46,7 @@ public static class StreamingResponseProcessor
         return ApiProvider.Cerebras; // Default
     }
 
-    private static async Task<ProcessedResponse> ProcessCerebrasStreamAsync(HttpResponseMessage httpResponse, CancellationToken cancellationToken)
+    private static async Task<ProcessedResponse> ProcessCerebrasStreamAsync(HttpResponseMessage httpResponse, CancellationToken cancellationToken, SpectreConsoleInterface? console)
     {
         var responseBuilder = new StringBuilder(); // Clean response without thinking blocks
         var thinkingBuilder = new StringBuilder(); // All thinking content
@@ -75,15 +76,15 @@ public static class StreamingResponseProcessor
 
                 buffer.Append(contentChunk);
 
-                ProcessContentBuffer(buffer, responseBuilder, thinkingBuilder, currentThinkingBuilder, ref inThinkBlock);
+                ProcessContentBuffer(buffer, responseBuilder, thinkingBuilder, currentThinkingBuilder, ref inThinkBlock, console);
             }
             catch (JsonException) { /* Ignore malformed JSON chunks */ }
         }
 
-        return FinalizeResponse(responseBuilder, thinkingBuilder, currentThinkingBuilder, buffer, inThinkBlock, cancellationToken);
+        return FinalizeResponse(responseBuilder, thinkingBuilder, currentThinkingBuilder, buffer, inThinkBlock, cancellationToken, console);
     }
 
-    private static async Task<ProcessedResponse> ProcessGeminiStreamAsync(HttpResponseMessage httpResponse, CancellationToken cancellationToken)
+    private static async Task<ProcessedResponse> ProcessGeminiStreamAsync(HttpResponseMessage httpResponse, CancellationToken cancellationToken, SpectreConsoleInterface? console)
     {
         var responseBuilder = new StringBuilder();
         var thinkingBuilder = new StringBuilder();
@@ -131,19 +132,19 @@ public static class StreamingResponseProcessor
                 catch (JsonException ex) 
                 { 
                     // Log the error for debugging
-                    Console.WriteLine($"\nJSON Parse Error: {ex.Message}");
-                    Console.WriteLine($"JSON: {jsonObj.Substring(0, Math.Min(100, jsonObj.Length))}...");
+                    console?.ShowError($"JSON Parse Error: {ex.Message}");
+                    console?.ShowError($"JSON: {jsonObj.Substring(0, Math.Min(100, jsonObj.Length))}...");
                 }
             }
         }
         
         // Process the complete buffer for thinking blocks
-        ProcessContentBuffer(buffer, responseBuilder, thinkingBuilder, currentThinkingBuilder, ref inThinkBlock);
+        ProcessContentBuffer(buffer, responseBuilder, thinkingBuilder, currentThinkingBuilder, ref inThinkBlock, console);
 
-        return FinalizeResponse(responseBuilder, thinkingBuilder, currentThinkingBuilder, buffer, inThinkBlock, cancellationToken);
+        return FinalizeResponse(responseBuilder, thinkingBuilder, currentThinkingBuilder, buffer, inThinkBlock, cancellationToken, console);
     }
 
-    private static void ProcessContentBuffer(StringBuilder buffer, StringBuilder responseBuilder, StringBuilder thinkingBuilder, StringBuilder currentThinkingBuilder, ref bool inThinkBlock)
+    private static void ProcessContentBuffer(StringBuilder buffer, StringBuilder responseBuilder, StringBuilder thinkingBuilder, StringBuilder currentThinkingBuilder, ref bool inThinkBlock, SpectreConsoleInterface? console)
     {
         while (true) // Process the buffer repeatedly until no more tags can be found
         {
@@ -159,7 +160,7 @@ public static class StreamingResponseProcessor
                     if (thinkingBuilder.Length > 0) thinkingBuilder.AppendLine();
                     thinkingBuilder.Append(currentThinkingBuilder.ToString());
                     
-                    ShowDoneMessage();
+                    ShowDoneMessage(console);
                     buffer.Remove(0, endTagIndex + "</think>".Length);
                     currentThinkingBuilder.Clear();
                     inThinkBlock = false;
@@ -182,7 +183,7 @@ public static class StreamingResponseProcessor
                     responseBuilder.Append(preThoughtText);
 
                     buffer.Remove(0, startTagIndex + "<think>".Length);
-                    ShowThinkingMessage();
+                    ShowThinkingMessage(console);
                     inThinkBlock = true;
                     continue; // Re-process the buffer
                 }
@@ -194,14 +195,12 @@ public static class StreamingResponseProcessor
         }
     }
 
-    private static ProcessedResponse FinalizeResponse(StringBuilder responseBuilder, StringBuilder thinkingBuilder, StringBuilder currentThinkingBuilder, StringBuilder buffer, bool inThinkBlock, CancellationToken cancellationToken)
+    private static ProcessedResponse FinalizeResponse(StringBuilder responseBuilder, StringBuilder thinkingBuilder, StringBuilder currentThinkingBuilder, StringBuilder buffer, bool inThinkBlock, CancellationToken cancellationToken, SpectreConsoleInterface? console)
     {
         // Check if we were cancelled
         if (cancellationToken.IsCancellationRequested)
         {
-            Console.ForegroundColor = ConsoleColor.Yellow;
-            Console.WriteLine("\n[Processing cancelled]");
-            Console.ResetColor();
+            console?.ShowInfo("\n[Processing cancelled]");
             throw new OperationCanceledException();
         }
         
@@ -226,16 +225,14 @@ public static class StreamingResponseProcessor
         };
     }
 
-    private static void ShowThinkingMessage()
+    private static void ShowThinkingMessage(SpectreConsoleInterface? console)
     {
-        Console.WriteLine(); // Start on a new line
-        Console.Write("Thinking...");
+        console?.ShowThinking();
     }
 
-    private static void ShowDoneMessage()
+    private static void ShowDoneMessage(SpectreConsoleInterface? console)
     {
-        Console.WriteLine();
-        Console.Write("Done thinking.\n"); 
+        console?.ClearThinking();
     }
 
     private static void ProcessGeminiJsonElement(JsonElement element, StringBuilder buffer)

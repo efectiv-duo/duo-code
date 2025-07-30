@@ -52,7 +52,7 @@ public class CerebrasApiService : IApiService
         _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
     }
     
-    public async Task<ProcessedResponse> GetAISuggestionAsync(List<CerebrasMessage> messages, CancellationToken cancellationToken = default, string? model = null)
+    public async Task<ProcessedResponse> GetAISuggestionAsync(List<CerebrasMessage> messages, CancellationToken cancellationToken = default, string? model = null, SpectreConsoleInterface? console = null)
     {
         // Use provided model or fall back to current model setting
         var targetModel = model ?? ApiSettings.CurrentModel;
@@ -63,17 +63,20 @@ public class CerebrasApiService : IApiService
         // If we get a 429 (Too Many Requests), try with the fallback model
         if (response.StatusCode == HttpStatusCode.TooManyRequests)
         {
-            Console.ForegroundColor = ConsoleColor.Yellow;
-            Console.WriteLine($"\nRate limit reached for {targetModel}, falling back to {ApiSettings.FallbackModel}...");
-            Console.ResetColor();
+            console?.ShowInfo($"Rate limit reached for {targetModel}, falling back to {ApiSettings.FallbackModel}...");
 
             ApiSettings.CurrentModel = ApiSettings.FallbackModel;
 
             response = await TryGetAISuggestionWithModelAsync(messages, ApiSettings.FallbackModel, cancellationToken);
         }
         
+        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+        {
+            throw new UnauthorizedAccessException("Invalid API key. Please check your Cerebras API key and try again. You can get a key from https://inference.cerebras.ai/");
+        }
+        
         response.EnsureSuccessStatusCode();
-        return await StreamingResponseProcessor.ProcessAsync(response, cancellationToken, ApiProvider.Cerebras);
+        return await StreamingResponseProcessor.ProcessAsync(response, cancellationToken, ApiProvider.Cerebras, console);
     }
     
     private async Task<HttpResponseMessage> TryGetAISuggestionWithModelAsync(List<CerebrasMessage> messages, string model, CancellationToken cancellationToken)

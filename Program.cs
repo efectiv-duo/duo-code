@@ -2,6 +2,7 @@ using System;
 using System.Threading.Tasks;
 using duo_code.Services;
 using duo_code.Services.Configuration;
+using duo_code.Services.Interfaces;
 using duo_code.Commands.Core;
 using duo_code.Tools.Core;
 
@@ -11,6 +12,36 @@ namespace duo_code
     {
         static async Task Main(string[] args)
         {
+            // Setup global graceful exit handler
+            var globalCts = new CancellationTokenSource();
+            var ctrlCPressCount = 0;
+            Console.CancelKeyPress += (sender, e) =>
+            {
+                ctrlCPressCount++;
+                
+                if (ctrlCPressCount == 1)
+                {
+                    e.Cancel = true;
+                    try
+                    {
+                        if (!globalCts.Token.IsCancellationRequested)
+                        {
+                            globalCts.Cancel();
+                        }
+                    }
+                    catch (ObjectDisposedException)
+                    {
+                        // Already disposed, ignore
+                    }
+                    Console.WriteLine("\nGracefully shutting down... Press Ctrl+C again to force exit.");
+                }
+                else
+                {
+                    Console.WriteLine("\nForce exit requested.");
+                    Environment.Exit(1);
+                }
+            };
+
             try
             {
                 // Check if running as subagent
@@ -28,7 +59,7 @@ namespace duo_code
                 }
                 
                 // TODO: remove this before release
-                Directory.SetCurrentDirectory("C:\\Work\\Efectiv Duo\\projects\\duo-code");
+                // Directory.SetCurrentDirectory("C:\\Work\\Efectiv Duo\\projects\\duo-code");
                 // Directory.SetCurrentDirectory(@"C:\Work\Efectiv Duo\clients\helpship\helpship.web");
 
                 // Initialize configuration
@@ -56,7 +87,9 @@ namespace duo_code
                 var commandRegistry = new CommandRegistry();
                 var toolRegistry = new ToolRegistry();
                 var responseProcessor = new StreamingResponseService();
-                var consoleInterface = new ConsoleInterface();
+                var consoleInterface = new SpectreConsoleInterface();
+                consoleInterface.SetCommandRegistry(commandRegistry);
+                var fileReferenceService = new FileReferenceService();
                 var conversationState = new ConversationState
                 {
                     CurrentModel = config.Settings.Models.DefaultModel
@@ -68,7 +101,8 @@ namespace duo_code
                     toolRegistry,
                     responseProcessor,
                     consoleInterface,
-                    conversationState
+                    conversationState,
+                    fileReferenceService
                 );
 
                 if (isSubagent && !string.IsNullOrWhiteSpace(subagentPrompt))
@@ -79,14 +113,22 @@ namespace duo_code
                 else
                 {
                     // Normal interactive mode
-                    await agentService.RunAsync();
+                    await agentService.RunAsync(globalCts.Token);
                 }
+            }
+            catch (OperationCanceledException) when (globalCts.Token.IsCancellationRequested)
+            {
+                Console.WriteLine("\nApplication shutdown completed.");
             }
             catch (Exception ex)
             {
                 Console.ForegroundColor = ConsoleColor.Red;
                 Console.WriteLine($"Fatal error: {ex.Message}");
                 Console.ResetColor();
+            }
+            finally
+            {
+                globalCts?.Dispose();
             }
         }
 

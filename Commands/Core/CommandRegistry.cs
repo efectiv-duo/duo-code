@@ -38,6 +38,7 @@ namespace duo_code.Commands.Core
             Register(new ClearCommand());
             Register(new ExitCommand());
             Register(new ChallengeCommand());
+            Register(new ApiKeyCommand());
             Register(new StatsCommand());
         }
 
@@ -119,6 +120,11 @@ namespace duo_code.Commands.Core
                     yield return (kvp.Key, kvp.Value.Description);
                 }
             }
+        }
+
+        public IEnumerable<string> GetAllCommandNames()
+        {
+            return _commands.Keys.OrderBy(x => x);
         }
     }
 }
