@@ -40,6 +40,7 @@ namespace duo_code.Commands.Core
             Register(new ChallengeCommand());
             Register(new ApiKeyCommand());
             Register(new StatsCommand());
+            Register(new DeleteCommand());
         }
 
         private void LoadPromptCommands()
@@ -68,6 +69,7 @@ namespace duo_code.Commands.Core
         private void Register(ICommand command)
         {
             _commands[command.Name] = command;
+            _commands["/" + command.Name] = command;
 
             // Register aliases if command has them
 
@@ -94,6 +96,7 @@ namespace duo_code.Commands.Core
                 foreach (var alias in aliasCommand.GetAliases())
                 {
                     _commands[alias] = command;
+                    _commands["/" + alias] = command;
                 }
             }
         }
