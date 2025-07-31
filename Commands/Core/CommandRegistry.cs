@@ -39,6 +39,7 @@ namespace duo_code.Commands.Core
             Register(new ExitCommand());
             Register(new ChallengeCommand());
             Register(new StatsCommand());
+            Register(new DeleteStatsCommand());
         }
 
         private void LoadPromptCommands()

@@ -113,8 +113,12 @@ public static class ToolFactory
 
             if (action != null)
             {
-                ToolAnalytics.LogToolUsage(toolType);
+                ToolAnalytics.LogToolUsage(toolType, success: true);
                 actions.Add(action);
+            }
+            else
+            {
+                ToolAnalytics.LogToolUsage(toolType, success: false);
             }
 
             // Move to the next potential tool

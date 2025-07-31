@@ -33,6 +33,18 @@ namespace duo_code.Commands.Actions
             }
 
             sb.AppendLine();
+            var mostUsed = ToolAnalytics.GetMostUsedTools(5);
+
+            foreach (var tool in mostUsed)
+            {
+                int total = stats.ContainsKey(tool) ? stats[tool] : 0;
+                int failed = ToolAnalytics.GetFailuresForTool(tool);
+                double failRate = total > 0 ? (double)failed / total * 100 : 0;
+
+                sb.AppendLine($"🔧 {tool} - Total: {total}, ❌ Failed: {failed} ({failRate:F1}%)");
+            }
+
+            sb.AppendLine();
             sb.AppendLine("💡 Suggestions for useful but underused tools:");
 
             var leastUsed = stats.OrderBy(k => k.Value)
