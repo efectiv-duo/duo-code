@@ -28,7 +28,7 @@ namespace duo_code
                 }
                 
                 // TODO: remove this before release
-                Directory.SetCurrentDirectory("C:\\Work\\Efectiv Duo\\projects\\duo-code");
+                //Directory.SetCurrentDirectory("C:\\Work\\Efectiv Duo\\projects\\duo-code");
                 // Directory.SetCurrentDirectory(@"C:\Work\Efectiv Duo\clients\helpship\helpship.web");
 
                 // Initialize configuration

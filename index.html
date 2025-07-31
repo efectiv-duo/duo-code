@@ -280,7 +280,7 @@
         const moonIcon = document.querySelector('.moon-icon');
 
         // Check for saved dark mode preference
-        if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        if (localStorage.theme === 'dark' || !('theme' in localStorage)) {
             document.documentElement.classList.add('dark');
             sunIcon.classList.add('hidden');
             moonIcon.classList.remove('hidden');
