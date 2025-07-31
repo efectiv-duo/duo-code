@@ -29,10 +29,9 @@ public static class ToolAnalytics
         "tool_failure_log.txt"
     );
 
+    // These dictionaries represent persistent stats (loaded from stats files)
     private static Dictionary<string, int> _usageStats = new();
     private static Dictionary<string, int> _failureStats = new();
-    private static List<string> _usageLog = new();
-    private static List<string> _failureLog = new();
     
     static ToolAnalytics()
     {
@@ -42,37 +41,41 @@ public static class ToolAnalytics
         {
             Directory.CreateDirectory(directory);
         }
-
-        LoadStatsFromFile();
-        LoadFailureStatsFromFile();
-        LoadUsageLogFromFile();
-        LoadFailureLogFromFile();
+        
+        // Load existing stats from files
+        LoadStatsFromFiles();
     }
 
     public static void LogToolUsage(string toolName)
     {
+        // Update persistent stats
         if (_usageStats.ContainsKey(toolName))
             _usageStats[toolName]++;
         else
             _usageStats[toolName] = 1;
 
-        _usageLog.Add($"{DateTime.Now:yyyy-MM-dd HH:mm:ss}|{toolName}|success");
+        // Append to log file (for admin purposes only)
+        var newLogEntry = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss}|{toolName}|success";
+        AppendToUsageLogFile(newLogEntry);
 
+        // Save updated stats to file
         SaveStatsToFile();
-        SaveUsageLogToFile();
     }
 
     public static void LogToolFailure(string toolName)
     {
+        // Update persistent failure stats
         if (_failureStats.ContainsKey(toolName))
             _failureStats[toolName]++;
         else
             _failureStats[toolName] = 1;
 
-        _failureLog.Add($"{DateTime.Now:yyyy-MM-dd HH:mm:ss}|{toolName}|failed");
+        // Append to log file (for admin purposes only)
+        var newLogEntry = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss}|{toolName}|failed";
+        AppendToFailureLogFile(newLogEntry);
 
+        // Save updated failure stats to file
         SaveFailureStatsToFile();
-        SaveFailureLogToFile();
     }
 
     public static Dictionary<string, int> GetUsageStats()
@@ -94,6 +97,103 @@ public static class ToolAnalytics
             .ToList();
     }
 
+    // Load stats from persistent files (not logs)
+    private static void LoadStatsFromFiles()
+    {
+        _usageStats = LoadUsageStatsFromFile();
+        _failureStats = LoadFailureStatsFromFile();
+    }
+
+    private static Dictionary<string, int> LoadUsageStatsFromFile()
+    {
+        var stats = new Dictionary<string, int>();
+        
+        if (!File.Exists(StatsFilePath))
+            return stats;
+
+        try
+        {
+            var lines = File.ReadAllLines(StatsFilePath);
+            foreach (var line in lines)
+            {
+                // Skip comments and empty lines
+                if (string.IsNullOrWhiteSpace(line) || line.StartsWith("#") || line.StartsWith("Total Usage:"))
+                    continue;
+
+                // Parse format: "  • toolName:"
+                if (line.Trim().StartsWith("• ") && line.EndsWith(":"))
+                {
+                    var toolName = line.Trim().Substring(2, line.Trim().Length - 3);
+                    // Read next line to get usage count
+                    var nextLineIndex = Array.IndexOf(lines, line) + 1;
+                    if (nextLineIndex < lines.Length)
+                    {
+                        var dataLine = lines[nextLineIndex];
+                        if (dataLine.Contains("Uses:"))
+                        {
+                            var usesStr = dataLine.Split("Uses:")[1].Split(';')[0].Trim();
+                            if (int.TryParse(usesStr, out int uses))
+                            {
+                                stats[toolName] = uses;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // Return empty stats if file reading fails
+        }
+
+        return stats;
+    }
+
+    private static Dictionary<string, int> LoadFailureStatsFromFile()
+    {
+        var stats = new Dictionary<string, int>();
+        
+        if (!File.Exists(FailureStatsFilePath))
+            return stats;
+
+        try
+        {
+            var lines = File.ReadAllLines(FailureStatsFilePath);
+            foreach (var line in lines)
+            {
+                // Skip comments and empty lines
+                if (string.IsNullOrWhiteSpace(line) || line.StartsWith("#") || line.StartsWith("Total Failures:"))
+                    continue;
+
+                // Parse format: "  • toolName:"
+                if (line.Trim().StartsWith("• ") && line.EndsWith(":"))
+                {
+                    var toolName = line.Trim().Substring(2, line.Trim().Length - 3);
+                    // Read next line to get failure count
+                    var nextLineIndex = Array.IndexOf(lines, line) + 1;
+                    if (nextLineIndex < lines.Length)
+                    {
+                        var dataLine = lines[nextLineIndex];
+                        if (dataLine.Contains("Failures:"))
+                        {
+                            var failuresStr = dataLine.Split("Failures:")[1].Split(';')[0].Trim();
+                            if (int.TryParse(failuresStr, out int failures))
+                            {
+                                stats[toolName] = failures;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // Return empty stats if file reading fails
+        }
+
+        return stats;
+    }
+
     private static void SaveStatsToFile()
     {
         var lines = new List<string>();
@@ -111,82 +211,20 @@ public static class ToolAnalytics
             {
                 var toolName = kvp.Key;
                 var uses = kvp.Value;
-                var failures = GetToolFailureCount(toolName);
-                var failureRate = uses + failures > 0 ? (double)failures / (uses + failures) * 100 : 0.0;
+                var failures = _failureStats.ContainsKey(toolName) ? _failureStats[toolName] : 0;
+                var totalAttempts = uses + failures;
+                var failureRate = totalAttempts > 0 ? (double)failures / totalAttempts * 100 : 0.0;
                 var successRate = 100.0 - failureRate;
 
                 lines.Add($"  • {toolName}:");
                 lines.Add($"    - Uses: {uses} ; Failures: {failures} ; Failure Rate: {failureRate:F1}% ; Success: {successRate:F1}%");
             }
-            
+
             lines.Add("");
             lines.Add($"Total Usage: {totalUsage}");
         }
 
         File.WriteAllLines(StatsFilePath, lines);
-    }
-
-    private static void LoadStatsFromFile()
-    {
-        if (File.Exists(StatsFilePath))
-        {
-            try
-            {
-                var lines = File.ReadAllLines(StatsFilePath);
-                _usageStats.Clear();
-
-                foreach (var line in lines)
-                {
-                    // Skip comments and empty lines
-                    if (string.IsNullOrWhiteSpace(line) || line.StartsWith("#"))
-                        continue;
-
-                    // Parse the new format: - Uses: X | Failures: Y | ...
-                    if (line.Trim().StartsWith("- Uses:"))
-                    {
-                        // Find the corresponding tool name from the previous line
-                        var lineIndex = Array.IndexOf(lines, line);
-                        if (lineIndex > 0)
-                        {
-                            var toolLine = lines[lineIndex - 1].Trim();
-                            if (toolLine.StartsWith("") && toolLine.EndsWith(";"))
-                            {
-                                var toolName = toolLine.Substring(2, toolLine.Length - 3).Trim();
-                                
-                                // Extract uses count
-                                var parts = line.Split(';');
-                                if (parts.Length > 0)
-                                {
-                                    var usesPart = parts[0].Trim();
-                                    var usesMatch = System.Text.RegularExpressions.Regex.Match(usesPart, @"Uses:\s*(\d+)");
-                                    if (usesMatch.Success && int.TryParse(usesMatch.Groups[1].Value, out int uses))
-                                    {
-                                        _usageStats[toolName] = uses;
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Also support old format for backward compatibility
-                    var oldFormatParts = line.Split('=', 2);
-                    if (oldFormatParts.Length == 2)
-                    {
-                        var toolName = oldFormatParts[0].Trim();
-                        var countPart = oldFormatParts[1].Split('(')[0].Trim();
-                        
-                        if (int.TryParse(countPart, out int count))
-                        {
-                            _usageStats[toolName] = count;
-                        }
-                    }
-                }
-            }
-            catch
-            {
-                _usageStats = new Dictionary<string, int>();
-            }
-        }
     }
 
     private static void SaveFailureStatsToFile()
@@ -206,14 +244,15 @@ public static class ToolAnalytics
             {
                 var toolName = kvp.Key;
                 var failures = kvp.Value;
-                var uses = GetToolUsageCount(toolName);
-                var failureRate = uses + failures > 0 ? (double)failures / (uses + failures) * 100 : 0.0;
+                var uses = _usageStats.ContainsKey(toolName) ? _usageStats[toolName] : 0;
+                var totalAttempts = uses + failures;
+                var failureRate = totalAttempts > 0 ? (double)failures / totalAttempts * 100 : 0.0;
                 var successRate = 100.0 - failureRate;
 
                 lines.Add($"  • {toolName}:");
-                lines.Add($"    - Uses: {uses} ; Failures: {failures} ; Failure Rate; {failureRate:F1}% ; Success: {successRate:F1}%");
+                lines.Add($"    - Uses: {uses} ; Failures: {failures} ; Failure Rate: {failureRate:F1}% ; Success: {successRate:F1}%");
             }
-            
+
             lines.Add("");
             lines.Add($"Total Failures: {totalFailures}");
         }
@@ -221,138 +260,51 @@ public static class ToolAnalytics
         File.WriteAllLines(FailureStatsFilePath, lines);
     }
 
-    private static void LoadFailureStatsFromFile()
+    private static void AppendToUsageLogFile(string logEntry)
     {
-        if (File.Exists(FailureStatsFilePath))
+        try
         {
-            try
+            // Check if file exists and has header, if not create it
+            if (!File.Exists(UsageLogFilePath))
             {
-                var lines = File.ReadAllLines(FailureStatsFilePath);
-                _failureStats.Clear();
-
-                foreach (var line in lines)
+                var headerLines = new List<string>
                 {
-                    // Skip comments and empty lines
-                    if (string.IsNullOrWhiteSpace(line) || line.StartsWith("#"))
-                        continue;
-
-                    // Parse the new format: - Uses: X | Failures: Y | ...
-                    if (line.Trim().StartsWith("- Uses:"))
-                    {
-                        // Find the corresponding tool name from the previous line
-                        var lineIndex = Array.IndexOf(lines, line);
-                        if (lineIndex > 0)
-                        {
-                            var toolLine = lines[lineIndex - 1].Trim();
-                            if (toolLine.StartsWith("• ") && toolLine.EndsWith(":"))
-                            {
-                                var toolName = toolLine.Substring(2, toolLine.Length - 3).Trim();
-                                
-                                // Extract failures count
-                                var parts = line.Split(';');
-                                if (parts.Length > 1)
-                                {
-                                    var failuresPart = parts[1].Trim();
-                                    var failuresMatch = System.Text.RegularExpressions.Regex.Match(failuresPart, @"Failures:\s*(\d+)");
-                                    if (failuresMatch.Success && int.TryParse(failuresMatch.Groups[1].Value, out int failures))
-                                    {
-                                        _failureStats[toolName] = failures;
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Also support old format for backward compatibility
-                    var oldFormatParts = line.Split('=', 2);
-                    if (oldFormatParts.Length == 2)
-                    {
-                        var toolName = oldFormatParts[0].Trim();
-                        var countPart = oldFormatParts[1].Split('(')[0].Trim();
-                        
-                        if (int.TryParse(countPart, out int count))
-                        {
-                            _failureStats[toolName] = count;
-                        }
-                    }
-                }
+                    $"# Tool Usage Log - Created on {DateTime.Now:yyyy-MM-dd HH:mm:ss}",
+                    "# Format: Timestamp|ToolName|Status",
+                    ""
+                };
+                File.WriteAllLines(UsageLogFilePath, headerLines);
             }
-            catch
-            {
-                _failureStats = new Dictionary<string, int>();
-            }
+
+            // Append the new log entry (this preserves all previous entries)
+            File.AppendAllLines(UsageLogFilePath, new[] { logEntry });
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to append to usage log: {ex.Message}");
         }
     }
 
-    private static void SaveUsageLogToFile()
+    private static void AppendToFailureLogFile(string logEntry)
     {
-        var lines = new List<string>();
-        lines.Add($"# Tool Usage Log - Generated on {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
-        lines.Add("# Format: Timestamp; ToolName; Status");
-        lines.Add("");
-        lines.AddRange(_usageLog);
-
-        File.WriteAllLines(UsageLogFilePath, lines);
-    }
-
-    private static void LoadUsageLogFromFile()
-    {
-        if (File.Exists(UsageLogFilePath))
+        try
         {
-            try
+            if (!File.Exists(FailureLogFilePath))
             {
-                var lines = File.ReadAllLines(UsageLogFilePath);
-                _usageLog.Clear();
-
-                foreach (var line in lines)
+                var headerLines = new List<string>
                 {
-                    // Skip comments and empty lines
-                    if (string.IsNullOrWhiteSpace(line) || line.StartsWith("#"))
-                        continue;
+                    $"# Tool Failure Log - Created on {DateTime.Now:yyyy-MM-dd HH:mm:ss}",
+                    "# Format: Timestamp|ToolName|Status",
+                    ""
+                };
+                File.WriteAllLines(FailureLogFilePath, headerLines);
+            }
 
-                    _usageLog.Add(line);
-                }
-            }
-            catch
-            {
-                _usageLog = new List<string>();
-            }
+            File.AppendAllLines(FailureLogFilePath, new[] { logEntry });
         }
-    }
-
-    private static void SaveFailureLogToFile()
-    {
-        var lines = new List<string>();
-        lines.Add($"# Tool Failure Log - Generated on {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
-        lines.Add("# Format: Timestamp; ToolName; Status");
-        lines.Add("");
-        lines.AddRange(_failureLog);
-
-        File.WriteAllLines(FailureLogFilePath, lines);
-    }
-
-    private static void LoadFailureLogFromFile()
-    {
-        if (File.Exists(FailureLogFilePath))
+        catch (Exception ex)
         {
-            try
-            {
-                var lines = File.ReadAllLines(FailureLogFilePath);
-                _failureLog.Clear();
-
-                foreach (var line in lines)
-                {
-                    // Skip comments and empty lines
-                    if (string.IsNullOrWhiteSpace(line) || line.StartsWith("#"))
-                        continue;
-
-                    _failureLog.Add(line);
-                }
-            }
-            catch
-            {
-                _failureLog = new List<string>();
-            }
+            Console.WriteLine($"Failed to append to failure log: {ex.Message}");
         }
     }
 
@@ -371,34 +323,28 @@ public static class ToolAnalytics
     public static double GetToolUsagePercentage(string toolName)
     {
         if (string.IsNullOrWhiteSpace(toolName)) return 0.0;
-        
+
         var totalUsage = _usageStats.Values.Sum();
         if (totalUsage == 0) return 0.0;
-        
-        var toolUsage = GetToolUsageCount(toolName);
+
+        var toolUsage = _usageStats.ContainsKey(toolName) ? _usageStats[toolName] : 0;
         return (double)toolUsage / totalUsage * 100;
     }
 
     public static double GetToolFailurePercentage(string toolName)
     {
         if (string.IsNullOrWhiteSpace(toolName)) return 0.0;
-        
+
         var totalFailures = _failureStats.Values.Sum();
         if (totalFailures == 0) return 0.0;
-        
-        var toolFailures = GetToolFailureCount(toolName);
+
+        var toolFailures = _failureStats.ContainsKey(toolName) ? _failureStats[toolName] : 0;
         return (double)toolFailures / totalFailures * 100;
     }
 
-    /*
-    public static List<string> GetUsageLog()
+    public static void ClearStats()
     {
-        return new List<string>(_usageLog);
+        _usageStats.Clear();
+        _failureStats.Clear();
     }
-
-    public static List<string> GetFailureLog()
-    {
-        return new List<string>(_failureLog);
-    }
-    */
 }

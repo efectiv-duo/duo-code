@@ -6,6 +6,8 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
+
+
 namespace duo_code.Commands.Actions
 {
     public class StatsCommand : ICommand, IHasAliases
@@ -81,10 +83,8 @@ namespace duo_code.Commands.Actions
 
             foreach (var tool in leastUsed)
             {
-                sb.AppendLine($"👉 Try using „{tool}” more often. It can be helpful in certain workflows.");
+                sb.AppendLine($"👉 Try using „{tool}” more often. {Description}.");
             }
-
-
 
             return Task.FromResult(CommandResult.Ok(sb.ToString()));
         }
