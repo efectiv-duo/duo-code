@@ -21,9 +21,18 @@ public class ChallengeCommand : ICommand, IHasAliases
     
     public async Task<CommandResult> ExecuteAsync(string[] args)
     {
+        // Check if running in headless mode
+        var isHeadless = Environment.GetCommandLineArgs().Contains("--headless");
+
         if (args.Length == 0)
         {
-            return CommandResult.Error(@"Usage: /challenge [subcommand]
+            if (isHeadless)
+            {
+                return await ShowInteractiveChallengeList();
+            }
+            else
+            {
+                return CommandResult.Error(@"Usage: /challenge [subcommand]
 Subcommands:
   list           - List all challenges
   run <id>       - Run a specific challenge
@@ -32,8 +41,9 @@ Subcommands:
   reset <id>     - Reset a specific challenge workspace
   info <id>      - Show detailed challenge information
   run-all        - Run all challenges automatically and generate score");
+            }
         }
-        
+
         var subcommand = args[0].ToLower();
         
         return subcommand switch
@@ -148,9 +158,8 @@ Subcommands:
         output.AppendLine(challenge.InitialPrompt);
         output.AppendLine();
         output.AppendLine($"📁 Workspace: {workspaceDir}\n");
-        
-        Console.WriteLine(output.ToString());
-        
+
+        // Return the output instead of printing to console
         // TODO: Refactor to use new AgentService architecture  
         // await Program.RunAgent(workspaceDir, challenge.InitialPrompt);
         await Task.CompletedTask;
@@ -175,8 +184,10 @@ Subcommands:
             resultOutput.AppendLine($"❌ Challenge FAILED. Score: {result.Score}/100");
         }
         resultOutput.AppendLine(result.Feedback);
-        
-        return CommandResult.Ok(resultOutput.ToString());
+
+        // Combine setup output with results
+        var fullOutput = output.ToString() + resultOutput.ToString();
+        return CommandResult.Ok(fullOutput);
     }
     
     private Task<CommandResult> ResetAllChallenges()
@@ -322,10 +333,10 @@ Subcommands:
     private async Task<CommandResult> RunAllChallenges()
     {
         var runner = new ChallengeRunner();
-        
-        Console.WriteLine("\n🏃 Starting automated challenge run...");
-        Console.WriteLine("This will test the AI agent on all challenges.\n");
-        
+        var output = new StringBuilder();
+        output.AppendLine("\n🏃 Starting automated challenge run...");
+        output.AppendLine("This will test the AI agent on all challenges.\n");
+
         try
         {
             var results = await runner.RunAllChallengesAsync();
@@ -348,22 +359,67 @@ Subcommands:
                     result.Score, TimeSpan.Zero);
             }
             await progress.SaveAsync(ProgressFilePath);
-            
-            // Display report
-            Console.WriteLine(report);
-            Console.WriteLine($"\n📄 Full report saved to: {reportPath}");
-            
+
+            // Add report to output
+            output.AppendLine(report);
+            output.AppendLine($"\n📄 Full report saved to: {reportPath}");
+
             var totalPassed = results.Count(r => r.result.Success);
             var avgScore = results.Any() ? results.Sum(r => r.result.Score) / results.Count : 0;
-            
-            return CommandResult.Ok($"Challenge run completed. {totalPassed}/{results.Count} passed. Average score: {avgScore}/100");
+
+            output.AppendLine($"\nChallenge run completed. {totalPassed}/{results.Count} passed. Average score: {avgScore}/100");
+
+            return CommandResult.Ok(output.ToString());
         }
         catch (Exception ex)
         {
             return CommandResult.Error($"Error during challenge run: {ex.Message}");
         }
     }
-    
+
+    private async Task<CommandResult> ShowInteractiveChallengeList()
+    {
+        var output = new StringBuilder();
+        output.AppendLine("🎯 Select a Challenge:");
+        output.AppendLine();
+        output.AppendLine("Current Model: Challenge Selector");
+        output.AppendLine();
+        output.AppendLine("Available Models:");
+
+        var challenges = ChallengeRegistry.GetAllChallenges();
+        var progress = await ChallengeProgress.LoadAsync(ProgressFilePath);
+
+        foreach (var challenge in challenges)
+        {
+            var status = "❌";
+            var score = "";
+
+            if (progress.Attempts.TryGetValue(challenge.Id, out var attempt))
+            {
+                if (attempt.Completed)
+                {
+                    status = "✅";
+                    score = $" [{attempt.BestScore}/100]";
+                }
+                else if (attempt.Attempts > 0)
+                {
+                    status = "🔄";
+                    score = $" [{attempt.BestScore}/100]";
+                }
+            }
+
+            // Format as selector option: "- Provider - Model (status)"
+            output.AppendLine($"- Challenge - {challenge.Id:D3}-{challenge.Name.Replace(" ", "")}{score} ({status})");
+        }
+
+        output.AppendLine();
+        output.AppendLine("Usage: /challenge run <id>");
+        output.AppendLine("       /challenge info <id>");
+        output.AppendLine("       /challenge progress");
+
+        return CommandResult.Ok(output.ToString());
+    }
+
     private static string GetDifficultyBar(int difficulty)
     {
         var filled = difficulty / 20;

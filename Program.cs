@@ -48,6 +48,9 @@ namespace duo_code
                 bool isSubagent = args.Contains("--subagent");
                 string? subagentPrompt = null;
                 
+                // Check if running in headless mode
+                bool isHeadless = args.Contains("--headless");
+                
                 if (isSubagent)
                 {
                     // Find the prompt argument (everything after --subagent)
@@ -70,16 +73,22 @@ namespace duo_code
                 duo_code.Services.ApiSettings.CurrentProvider = savedProvider;
                 duo_code.Services.ApiSettings.CurrentModel = savedModel;
                 
-                // Show current settings
-                Console.ForegroundColor = ConsoleColor.Green;
-                Console.WriteLine($"Loaded settings: {savedProvider} - {savedModel}");
-                Console.ResetColor();
+                // Show current settings (only in non-headless mode)
+                if (!isHeadless)
+                {
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine($"Loaded settings: {savedProvider} - {savedModel}");
+                    Console.ResetColor();
+                }
                 
                 // Initialize API key
-                var apiKey = await InitializeApiKey(args, config);
+                var apiKey = await InitializeApiKey(args, config, isHeadless);
                 if (string.IsNullOrEmpty(apiKey))
                 {
-                    Console.WriteLine("API key is required!");
+                    if (!isHeadless)
+                    {
+                        Console.WriteLine("API key is required!");
+                    }
                     return;
                 }
 
@@ -87,33 +96,52 @@ namespace duo_code
                 var commandRegistry = new CommandRegistry();
                 var toolRegistry = new ToolRegistry();
                 var responseProcessor = new StreamingResponseService();
-                var consoleInterface = new SpectreConsoleInterface();
-                consoleInterface.SetCommandRegistry(commandRegistry);
                 var fileReferenceService = new FileReferenceService();
                 var conversationState = new ConversationState
                 {
                     CurrentModel = config.Settings.Models.DefaultModel
                 };
 
-                // Create agent service
-                var agentService = new AgentService(
-                    commandRegistry,
-                    toolRegistry,
-                    responseProcessor,
-                    consoleInterface,
-                    conversationState,
-                    fileReferenceService
-                );
-
-                if (isSubagent && !string.IsNullOrWhiteSpace(subagentPrompt))
+                if (isHeadless)
                 {
-                    // Subagent mode - process the given prompt and exit
-                    await agentService.ProcessSubagentPromptAsync(subagentPrompt);
+                    // Headless mode - use JSON communication
+                    var headlessInterface = new HeadlessInterface();
+                    var headlessAgentService = new HeadlessAgentService(
+                        commandRegistry,
+                        toolRegistry,
+                        responseProcessor,
+                        headlessInterface,
+                        conversationState,
+                        fileReferenceService
+                    );
+
+                    await headlessAgentService.RunAsync(globalCts.Token);
                 }
                 else
                 {
-                    // Normal interactive mode
-                    await agentService.RunAsync(globalCts.Token);
+                    // Regular console mode
+                    var consoleInterface = new SpectreConsoleInterface();
+                    consoleInterface.SetCommandRegistry(commandRegistry);
+                    
+                    var agentService = new AgentService(
+                        commandRegistry,
+                        toolRegistry,
+                        responseProcessor,
+                        consoleInterface,
+                        conversationState,
+                        fileReferenceService
+                    );
+
+                    if (isSubagent && !string.IsNullOrWhiteSpace(subagentPrompt))
+                    {
+                        // Subagent mode - process the given prompt and exit
+                        await agentService.ProcessSubagentPromptAsync(subagentPrompt);
+                    }
+                    else
+                    {
+                        // Normal interactive mode
+                        await agentService.RunAsync(globalCts.Token);
+                    }
                 }
             }
             catch (OperationCanceledException) when (globalCts.Token.IsCancellationRequested)
@@ -132,7 +160,7 @@ namespace duo_code
             }
         }
 
-        private static async Task<string> InitializeApiKey(string[] args, ConfigurationService config)
+        private static async Task<string> InitializeApiKey(string[] args, ConfigurationService config, bool isHeadless = false)
         {
             // Check command line args
             if (args.Length > 0 && args[0].StartsWith("--api-key="))
@@ -146,6 +174,12 @@ namespace duo_code
             var savedKey = ApiKeyManager.LoadApiKey();
             if (!string.IsNullOrWhiteSpace(savedKey))
                 return savedKey;
+
+            // Don't prompt in headless mode
+            if (isHeadless)
+            {
+                return string.Empty;
+            }
 
             // Prompt user for key
             Console.ForegroundColor = ConsoleColor.Yellow;

@@ -60,7 +60,9 @@ namespace duo_code.Commands.Core
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Failed to load prompt command from {file}: {ex.Message}");
+                    // Log error but don't use Console.WriteLine in headless mode
+                    // This will be handled by the error reporting system
+                    System.Diagnostics.Debug.WriteLine($"Failed to load prompt command from {file}: {ex.Message}");
                 }
             }
         }

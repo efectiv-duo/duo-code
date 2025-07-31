@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using duo_code.Models;
+using duo_code.Services.Interfaces;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
 
@@ -19,7 +20,7 @@ public class GeminiApiService : IApiService
         _httpClient.Timeout = TimeSpan.FromMinutes(5);
     }
     
-    public async Task<ProcessedResponse> GetAISuggestionAsync(List<CerebrasMessage> messages, CancellationToken cancellationToken = default, string? model = null, SpectreConsoleInterface? console = null)
+    public async Task<ProcessedResponse> GetAISuggestionAsync(List<CerebrasMessage> messages, CancellationToken cancellationToken = default, string? model = null, IConsoleInterface? console = null)
     {
         var apiUrl = $"{_baseUrl}?key={_apiKey}";
         

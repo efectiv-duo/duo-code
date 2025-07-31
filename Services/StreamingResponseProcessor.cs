@@ -1,6 +1,7 @@
 ﻿using System.Text;
 using System.Text.Json;
 using duo_code.Models;
+using duo_code.Services.Interfaces;
 
 namespace duo_code.Services;
 
@@ -19,7 +20,7 @@ public static class StreamingResponseProcessor
     /// <param name="provider">The API provider to determine parsing format.</param>
     /// <param name="console">Console interface for displaying messages.</param>
     /// <returns>ProcessedResponse containing the response and thinking content.</returns>
-    public static async Task<ProcessedResponse> ProcessAsync(HttpResponseMessage httpResponse, CancellationToken cancellationToken = default, ApiProvider? provider = null, SpectreConsoleInterface? console = null)
+    public static async Task<ProcessedResponse> ProcessAsync(HttpResponseMessage httpResponse, CancellationToken cancellationToken = default, ApiProvider? provider = null, IConsoleInterface? console = null)
     {
         // Auto-detect provider if not specified
         var detectedProvider = provider ?? DetectProvider(httpResponse);
@@ -46,7 +47,7 @@ public static class StreamingResponseProcessor
         return ApiProvider.Cerebras; // Default
     }
 
-    private static async Task<ProcessedResponse> ProcessCerebrasStreamAsync(HttpResponseMessage httpResponse, CancellationToken cancellationToken, SpectreConsoleInterface? console)
+    private static async Task<ProcessedResponse> ProcessCerebrasStreamAsync(HttpResponseMessage httpResponse, CancellationToken cancellationToken, IConsoleInterface? console)
     {
         var responseBuilder = new StringBuilder(); // Clean response without thinking blocks
         var thinkingBuilder = new StringBuilder(); // All thinking content
@@ -84,7 +85,7 @@ public static class StreamingResponseProcessor
         return FinalizeResponse(responseBuilder, thinkingBuilder, currentThinkingBuilder, buffer, inThinkBlock, cancellationToken, console);
     }
 
-    private static async Task<ProcessedResponse> ProcessGeminiStreamAsync(HttpResponseMessage httpResponse, CancellationToken cancellationToken, SpectreConsoleInterface? console)
+    private static async Task<ProcessedResponse> ProcessGeminiStreamAsync(HttpResponseMessage httpResponse, CancellationToken cancellationToken, IConsoleInterface? console)
     {
         var responseBuilder = new StringBuilder();
         var thinkingBuilder = new StringBuilder();
@@ -144,7 +145,7 @@ public static class StreamingResponseProcessor
         return FinalizeResponse(responseBuilder, thinkingBuilder, currentThinkingBuilder, buffer, inThinkBlock, cancellationToken, console);
     }
 
-    private static void ProcessContentBuffer(StringBuilder buffer, StringBuilder responseBuilder, StringBuilder thinkingBuilder, StringBuilder currentThinkingBuilder, ref bool inThinkBlock, SpectreConsoleInterface? console)
+    private static void ProcessContentBuffer(StringBuilder buffer, StringBuilder responseBuilder, StringBuilder thinkingBuilder, StringBuilder currentThinkingBuilder, ref bool inThinkBlock, IConsoleInterface? console)
     {
         while (true) // Process the buffer repeatedly until no more tags can be found
         {
@@ -195,7 +196,7 @@ public static class StreamingResponseProcessor
         }
     }
 
-    private static ProcessedResponse FinalizeResponse(StringBuilder responseBuilder, StringBuilder thinkingBuilder, StringBuilder currentThinkingBuilder, StringBuilder buffer, bool inThinkBlock, CancellationToken cancellationToken, SpectreConsoleInterface? console)
+    private static ProcessedResponse FinalizeResponse(StringBuilder responseBuilder, StringBuilder thinkingBuilder, StringBuilder currentThinkingBuilder, StringBuilder buffer, bool inThinkBlock, CancellationToken cancellationToken, IConsoleInterface? console)
     {
         // Check if we were cancelled
         if (cancellationToken.IsCancellationRequested)
@@ -225,12 +226,12 @@ public static class StreamingResponseProcessor
         };
     }
 
-    private static void ShowThinkingMessage(SpectreConsoleInterface? console)
+    private static void ShowThinkingMessage(IConsoleInterface? console)
     {
         console?.ShowThinking();
     }
 
-    private static void ShowDoneMessage(SpectreConsoleInterface? console)
+    private static void ShowDoneMessage(IConsoleInterface? console)
     {
         console?.ClearThinking();
     }

@@ -19,6 +19,58 @@ public class HelpCommand : ICommand, IHasAliases
     
     public Task<CommandResult> ExecuteAsync(string[] args)
     {
+        // Check if running in headless mode
+        var isHeadless = Environment.GetCommandLineArgs().Contains("--headless");
+
+        if (isHeadless)
+        {
+            return Task.FromResult(ShowInteractiveHelp());
+        }
+        else
+        {
+            return Task.FromResult(ShowTraditionalHelp());
+        }
+    }
+
+    private CommandResult ShowInteractiveHelp()
+    {
+        var commands = _registry.GetAllCommands();
+        var actionCommands = commands.Where(c => c.Type == CommandType.Action).ToList();
+        var promptCommands = commands.Where(c => c.Type == CommandType.Prompt).ToList();
+
+        var output = new System.Text.StringBuilder();
+        output.AppendLine("📚 Command Help:");
+        output.AppendLine();
+        output.AppendLine("Current Model: Help Browser");
+        output.AppendLine();
+        output.AppendLine("Available Models:");
+
+        // Show action commands as selectable options
+        foreach (var cmd in actionCommands)
+        {
+            var aliases = cmd is IHasAliases aliasCmd ? string.Join(",", aliasCmd.GetAliases()) : "";
+            var aliasText = !string.IsNullOrEmpty(aliases) ? $" (aliases: {aliases})" : "";
+            output.AppendLine($"- Action - {cmd.Name}{aliasText}");
+        }
+
+        // Show prompt commands as selectable options  
+        foreach (var cmd in promptCommands)
+        {
+            var aliases = cmd is IHasAliases aliasCmd ? string.Join(",", aliasCmd.GetAliases()) : "";
+            var aliasText = !string.IsNullOrEmpty(aliases) ? $" (aliases: {aliases})" : "";
+            output.AppendLine($"- Prompt - {cmd.Name}{aliasText}");
+        }
+
+        output.AppendLine();
+        output.AppendLine("Usage: Select a command to see detailed help");
+        output.AppendLine("Action Commands: Execute immediately");
+        output.AppendLine("Prompt Commands: Submit to AI assistant");
+
+        return CommandResult.Ok(output.ToString());
+    }
+
+    private CommandResult ShowTraditionalHelp()
+    {
         var commands = _registry.GetAllCommands();
         var actionCommands = commands.Where(c => c.Type == CommandType.Action);
         var promptCommands = commands.Where(c => c.Type == CommandType.Prompt);
@@ -42,7 +94,7 @@ Prompt Commands (submitted to AI):
         
         helpText += @"
 Type 'exit' to quit the application.";
-        
-        return Task.FromResult(CommandResult.Ok(helpText));
+
+        return CommandResult.Ok(helpText);
     }
 }

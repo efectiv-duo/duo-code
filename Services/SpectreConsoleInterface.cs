@@ -3,11 +3,12 @@ using System.Threading;
 using System.Threading.Tasks;
 using duo_code.Models;
 using duo_code.Commands.Core;
+using duo_code.Services.Interfaces;
 using Spectre.Console;
 
 namespace duo_code.Services
 {
-    public class SpectreConsoleInterface
+    public class SpectreConsoleInterface : IConsoleInterface
     {
         private static readonly string[] ThinkingFrames = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" };
         private CancellationTokenSource? _thinkingCancellation;

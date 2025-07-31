@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Net;
 using duo_code.Commands.Actions;
 using duo_code.Models;
+using duo_code.Services.Interfaces;
 
 namespace duo_code.Services;
 
@@ -52,7 +53,7 @@ public class CerebrasApiService : IApiService
         _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
     }
     
-    public async Task<ProcessedResponse> GetAISuggestionAsync(List<CerebrasMessage> messages, CancellationToken cancellationToken = default, string? model = null, SpectreConsoleInterface? console = null)
+    public async Task<ProcessedResponse> GetAISuggestionAsync(List<CerebrasMessage> messages, CancellationToken cancellationToken = default, string? model = null, IConsoleInterface? console = null)
     {
         // Use provided model or fall back to current model setting
         var targetModel = model ?? ApiSettings.CurrentModel;
