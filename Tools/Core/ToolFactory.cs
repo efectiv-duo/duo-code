@@ -48,7 +48,7 @@ public static class ToolFactory
             int contentEndIndex = contentStartIndex;
 
             // For tools that need content, find where the next tool starts
-            if (toolType == "CREATE_FILE" || toolType == "UPDATE_FILE" || toolType == "FINISH_TASK" || toolType == "NOTES")
+            if (toolType == "CREATE_FILE" || toolType == "UPDATE_FILE" || toolType == "FINISH_TASK" || toolType == "NOTES" || toolType == "SPAWN_SUBAGENT")
             {
                 // Find the next tool command or end of input
                 while (contentEndIndex < lines.Length)
@@ -109,6 +109,10 @@ public static class ToolFactory
                     var notes = string.Join(Environment.NewLine, lines.Skip(contentStartIndex).Take(contentEndIndex - contentStartIndex));
                     action = new NotesAction { Notes = notes };
                     break;
+                case "SPAWN_SUBAGENT":
+                    var prompt = string.Join(Environment.NewLine, lines.Skip(contentStartIndex).Take(contentEndIndex - contentStartIndex));
+                    action = new SpawnSubagentAction { TaskDescription = args, Prompt = prompt };
+                    break;
             }
 
             if (action != null)
@@ -118,7 +122,7 @@ public static class ToolFactory
             }
 
             // Move to the next potential tool
-            i = toolType == "CREATE_FILE" || toolType == "UPDATE_FILE" || toolType == "FINISH_TASK" || toolType == "NOTES"
+            i = toolType == "CREATE_FILE" || toolType == "UPDATE_FILE" || toolType == "FINISH_TASK" || toolType == "NOTES" || toolType == "SPAWN_SUBAGENT"
                 ? contentEndIndex
                 : i + 1;
         }

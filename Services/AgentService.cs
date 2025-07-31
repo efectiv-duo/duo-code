@@ -1,6 +1,8 @@
 using duo_code.Commands.Core;
 using duo_code.Models;
 using duo_code.Tools.Core;
+using duo_code.Services.Interfaces;
+using Spectre.Console;
 
 namespace duo_code.Services
 {
@@ -11,16 +13,18 @@ namespace duo_code.Services
         private readonly CommandRegistry _commandRegistry;
         private readonly ToolRegistry _toolRegistry;
         private readonly StreamingResponseService _responseProcessor;
-        private readonly ConsoleInterface _console;
+        private readonly SpectreConsoleInterface _console;
         private readonly ConversationState _state;
         private readonly ConversationLogger _logger;
+        private readonly IFileReferenceService _fileReferenceService;
 
         public AgentService(
             CommandRegistry commandRegistry,
             ToolRegistry toolRegistry,
             StreamingResponseService responseProcessor,
-            ConsoleInterface console,
-            ConversationState state)
+            SpectreConsoleInterface console,
+            ConversationState state,
+            IFileReferenceService fileReferenceService = null)
         {
             _currentProvider = ApiSettings.CurrentProvider;
             _apiService = ApiServiceFactory.CreateApiService(_currentProvider);
@@ -30,6 +34,7 @@ namespace duo_code.Services
             _console = console;
             _state = state;
             _logger = new ConversationLogger();
+            _fileReferenceService = fileReferenceService ?? new FileReferenceService();
         }
 
         public async Task ProcessSubagentPromptAsync(string prompt)
@@ -38,11 +43,11 @@ namespace duo_code.Services
             await ProcessUserMessageAsync(prompt);
         }
 
-        public async Task RunAsync()
+        public async Task RunAsync(CancellationToken cancellationToken = default)
         {
             _console.ShowWelcomeMessage();
 
-            while (_state.IsRunning)
+            while (_state.IsRunning && !cancellationToken.IsCancellationRequested)
             {
                 try
                 {
@@ -65,6 +70,11 @@ namespace duo_code.Services
                     {
                         await ProcessUserMessageAsync(input);
                     }
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    _console.ShowInfo("Operation cancelled. Exiting...");
+                    break;
                 }
                 catch (Exception ex)
                 {
@@ -111,7 +121,17 @@ namespace duo_code.Services
 
         private async Task ProcessUserMessageAsync(string userInput)
         {
-            _state.Messages.Add(new Message { Role = "user", Content = userInput });
+            // Process file references in user input
+            var fileReferenceResult = await _fileReferenceService.ProcessFileReferencesAsync(userInput);
+            
+            // Add user message
+            _state.Messages.Add(new Message { Role = "user", Content = fileReferenceResult.ProcessedUserContent });
+            
+            // Add system message with file references if any exist
+            if (fileReferenceResult.HasFileReferences && !string.IsNullOrEmpty(fileReferenceResult.SystemMessageContent))
+            {
+                _state.Messages.Add(new Message { Role = "system", Content = fileReferenceResult.SystemMessageContent });
+            }
 
             // Continue prompting until FINISH_TASK is received
             bool taskCompleted = false;
@@ -136,14 +156,18 @@ namespace duo_code.Services
                         Content = m.Content
                     }).ToList();
 
-                    Console.WriteLine("Message sent ..."); // Print pre-thought content immediately
+                    await AnsiConsole.Status()
+                        .Spinner(Spinner.Known.Flip)
+                        .SpinnerStyle(Style.Parse("green bold"))
+                        .StartAsync("Waiting for a response...", async ctx =>
+                        {
+                            var processedResponse = await _apiService.GetAISuggestionAsync(cerebrasMessages, cts.Token, ApiSettings.CurrentModel, _console);
 
-                    var processedResponse = await _apiService.GetAISuggestionAsync(cerebrasMessages, cts.Token, ApiSettings.CurrentModel);
-
-                    if (!string.IsNullOrWhiteSpace(processedResponse.Content))
-                    {
-                        taskCompleted = await ProcessAssistantResponseAsync(processedResponse);
-                    }
+                            if (!string.IsNullOrWhiteSpace(processedResponse?.Content))
+                            {
+                                taskCompleted = await ProcessAssistantResponseAsync(processedResponse);
+                            }
+                        });
                 }
                 catch (OperationCanceledException)
                 {
