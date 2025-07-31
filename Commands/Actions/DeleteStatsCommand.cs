@@ -8,11 +8,11 @@ namespace duo_code.Commands.Actions
 {
     public class DeleteStatsCommand : ICommand, IHasAliases
     {
-        public string Name => "delete";
+        public string Name => "statsdelete";
         public string Description => "Deletes all tool usage statistics from the stats file.";
         public CommandType Type => CommandType.Action;
 
-        public string[] GetAliases() => new[] { "del" };
+        public string[] GetAliases() => new[] { "sdel" };
 
         public Task<CommandResult> ExecuteAsync(string[] args)
         {
