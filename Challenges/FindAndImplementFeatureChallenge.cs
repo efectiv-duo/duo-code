@@ -162,7 +162,7 @@ public class Product
 4. The FileLogger should:
    - Write logs to a file specified in the constructor
    - Include timestamps in the log entries
-   - Format: [TIMESTAMP] [LEVEL] Category: Message
+   - Format: [TIMESTAMP] [LEVEL] Category: StateMessage
 5. Update the LoggerFactory to support creating FileLoggers
 6. The factory should check AppConfig.EnableFileLogging to decide which logger to create
 

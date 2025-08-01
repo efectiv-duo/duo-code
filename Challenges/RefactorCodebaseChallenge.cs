@@ -59,7 +59,7 @@ public class CustomerService
         catch (Exception ex)
         {
             // Duplicate error logging
-            Console.WriteLine($""Error occurred: {ex.Message}"");
+            Console.WriteLine($""Error occurred: {ex.StateMessage}"");
             Console.WriteLine($""Stack trace: {ex.StackTrace}"");
             Console.WriteLine($""Time: {DateTime.Now}"");
             throw;
@@ -114,7 +114,7 @@ public class OrderService
         catch (Exception ex)
         {
             // Duplicate error logging
-            Console.WriteLine($""Error occurred: {ex.Message}"");
+            Console.WriteLine($""Error occurred: {ex.StateMessage}"");
             Console.WriteLine($""Stack trace: {ex.StackTrace}"");
             Console.WriteLine($""Time: {DateTime.Now}"");
             throw;
@@ -169,7 +169,7 @@ public class SupplierService
         catch (Exception ex)
         {
             // Duplicate error logging
-            Console.WriteLine($""Error occurred: {ex.Message}"");
+            Console.WriteLine($""Error occurred: {ex.StateMessage}"");
             Console.WriteLine($""Stack trace: {ex.StackTrace}"");
             Console.WriteLine($""Time: {DateTime.Now}"");
             throw;

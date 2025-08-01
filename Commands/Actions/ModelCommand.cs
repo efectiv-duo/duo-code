@@ -27,7 +27,7 @@ namespace duo_code.Commands.Actions
                 var currentProvider = ApiSettings.CurrentProvider;
                 var currentModel = ApiSettings.CurrentModel;
                 
-                var currentPanel = new Panel($"[bold]Provider:[/] {currentProvider}\n[bold]Model:[/] {currentModel}")
+                var currentPanel = new Spectre.Console.Panel($"[bold]Provider:[/] {currentProvider}\n[bold]Model:[/] {currentModel}")
                 {
                     Header = new PanelHeader("[green]Current Selection[/]"),
                     Border = BoxBorder.Rounded,
@@ -64,7 +64,7 @@ namespace duo_code.Commands.Actions
                 ApiKeyManager.SaveCurrentSettings(ApiSettings.CurrentProvider, ApiSettings.CurrentModel);
 
                 // Show success message
-                var successPanel = new Panel($"[bold]Provider:[/] {selectedModel.Provider}\n[bold]Model:[/] {selectedModel.Model}")
+                var successPanel = new Spectre.Console.Panel($"[bold]Provider:[/] {selectedModel.Provider}\n[bold]Model:[/] {selectedModel.Model}")
                 {
                     Header = new PanelHeader("[green]✓ Selection Updated[/]"),
                     Border = BoxBorder.Rounded,

@@ -198,7 +198,7 @@ public class ApiTests
         }
         catch (Exception ex)
         {
-            Console.WriteLine($""Test failed: {ex.Message}"");
+            Console.WriteLine($""Test failed: {ex.StateMessage}"");
             Console.WriteLine($""Stack trace: {ex.StackTrace}"");
         }
     }
@@ -322,7 +322,7 @@ The API expects:
             }
             
             // Check exception handling
-            if (content.Contains("ex.Message") || content.Contains("InnerException"))
+            if (content.Contains("ex.StateMessage") || content.Contains("InnerException"))
             {
                 result.PassedTests.Add("Exception details preserved");
                 fixedIssues++;

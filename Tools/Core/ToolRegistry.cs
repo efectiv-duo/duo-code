@@ -28,6 +28,12 @@ namespace duo_code.Tools.Core
             Register<EndTurnAction>();
             Register<NotesAction>();
             Register<SpawnSubagentAction>();
+            Register<MouseClickAction>();
+            Register<MouseMoveAction>();
+            Register<MouseScrollAction>();
+            Register<KeyboardTypeAction>();
+            Register<KeyboardPressAction>();
+            Register<WaitAction>();
         }
 
         private void Register<T>() where T : IToolAction, new()
@@ -36,7 +42,7 @@ namespace duo_code.Tools.Core
             _toolTypes[instance.ToolName] = typeof(T);
         }
 
-        public string GetAllToolInstructions(Mode mode = Mode.Default)
+        public string GetAllToolInstructions(AgentMode mode = AgentMode.Default)
         {
             var sb = new StringBuilder();
             sb.AppendLine("You have access to the following tools:");
@@ -62,13 +68,13 @@ namespace duo_code.Tools.Core
             return sb.ToString();
         }
 
-        private bool IsToolAvailableForMode(string toolName, Mode mode)
+        private bool IsToolAvailableForMode(string toolName, AgentMode mode)
         {
             return mode switch
             {
-                Mode.Default => IsDefaultModeTool(toolName),
-                Mode.Planning => IsPlanningModeTool(toolName),
-                Mode.Orchestrator => IsOrchestratorModeTool(toolName),
+                AgentMode.Default => IsDefaultModeTool(toolName),
+                AgentMode.Planning => IsPlanningModeTool(toolName),
+                AgentMode.Orchestrator => IsOrchestratorModeTool(toolName),
                 _ => true
             };
         }
@@ -78,9 +84,7 @@ namespace duo_code.Tools.Core
             // Default mode has access to all core file and analysis tools
             var defaultTools = new HashSet<string>
             {
-                "LIST_FILES", "FIND", "SEARCH", "READ_FILE", "GIT_SUMMARY", "CREATE_FILE", "UPDATE_FILE",
-                "DELETE_FILE", "CREATE_DIRECTORY", "DELETE_DIRECTORY", "RENAME_FILE",
-                "RUN_COMMAND", "FINISH_TASK", "NOTES"
+                "MOUSE_CLICK", "MOUSE_MOVE", "MOUSE_SCROLL", "KEYBOARD_TYPE", "KEYBOARD_PRESS", "WAIT"
             };
             return defaultTools.Contains(toolName);
         }
@@ -110,7 +114,7 @@ namespace duo_code.Tools.Core
             return _toolTypes.Keys.ToList();
         }
 
-        public IToolAction? CreateTool(string name, Mode mode = Mode.Default)
+        public IToolAction? CreateTool(string name, AgentMode mode = AgentMode.Default)
         {
             if (_toolTypes.TryGetValue(name, out var type) && IsToolAvailableForMode(name, mode))
             {

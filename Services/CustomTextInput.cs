@@ -11,7 +11,7 @@ namespace duo_code.Services
     {
         private readonly CommandRegistry? _commandRegistry;
         private readonly List<string> _commandHistory;
-        private readonly Mode _currentMode;
+        private readonly AgentMode _currentMode;
         private readonly FileSearchService _fileSearchService;
         private int _historyIndex = -1;
         private List<FileSearchResult> _fileSuggestions = new();
@@ -40,7 +40,7 @@ namespace duo_code.Services
         private bool _inputRepositioned = false;
         private const int RequiredSuggestionLines = SuggestionsPerPage;
 
-        public CustomTextInput(CommandRegistry? commandRegistry, List<string> commandHistory, Mode currentMode)
+        public CustomTextInput(CommandRegistry? commandRegistry, List<string> commandHistory, AgentMode currentMode)
         {
             _commandRegistry = commandRegistry;
             _commandHistory = commandHistory;
@@ -48,15 +48,15 @@ namespace duo_code.Services
             _fileSearchService = new FileSearchService();
         }
 
-        public (string input, Mode? modeSwitch) ReadInput()
+        public (string input, AgentMode? modeSwitch) ReadInput()
         {
             // Create a styled input box
-            var panel = new Panel("")
+            var panel = new Spectre.Console.Panel("")
             {
                 Header = new PanelHeader(GetModeHeader()),
                 Border = BoxBorder.Rounded,
                 BorderStyle = Style.Parse(GetModeColor()),
-                Padding = new Padding(1, 0, 1, 0)
+                Padding = new Spectre.Console.Padding(1, 0, 1, 0)
             };
 
             // Show the input box frame
@@ -69,13 +69,13 @@ namespace duo_code.Services
             // Show mode-specific styling with emoji indicators
             var modeEmoji = _currentMode switch
             {
-                Mode.Default => "🤖",
-                Mode.Planning => "📋",
-                Mode.Orchestrator => "🎯",
+                AgentMode.Default => "🤖",
+                AgentMode.Planning => "📋",
+                AgentMode.Orchestrator => "🎯",
                 _ => "❓"
             };
             
-            AnsiConsole.Write(new Rule($"[bold {GetModeColor()}]{modeEmoji} {_currentMode.ToDisplayString()} Mode[/]")
+            AnsiConsole.Write(new Rule($"[bold {GetModeColor()}]{modeEmoji} {_currentMode.ToDisplayString()} AgentMode[/]")
             {
                 Style = Style.Parse(GetModeColor())
             });
@@ -367,10 +367,10 @@ namespace duo_code.Services
         {
             return _currentMode switch
             {
-                Mode.Default => $"[{GetModeColor()}]Default Mode - General AI Assistant[/]",
-                Mode.Planning => $"[{GetModeColor()}]Planning Mode - Strategic Analysis[/]",
-                Mode.Orchestrator => $"[{GetModeColor()}]Orchestrator Mode - Complex Task Management[/]",
-                _ => $"[{GetModeColor()}]Unknown Mode[/]"
+                AgentMode.Default => $"[{GetModeColor()}]Default AgentMode - General AI Assistant[/]",
+                AgentMode.Planning => $"[{GetModeColor()}]Planning AgentMode - Strategic Analysis[/]",
+                AgentMode.Orchestrator => $"[{GetModeColor()}]Orchestrator AgentMode - Complex Task Management[/]",
+                _ => $"[{GetModeColor()}]Unknown AgentMode[/]"
             };
         }
 
@@ -378,9 +378,9 @@ namespace duo_code.Services
         {
             return _currentMode switch
             {
-                Mode.Default => "cyan",
-                Mode.Planning => "yellow",
-                Mode.Orchestrator => "magenta",
+                AgentMode.Default => "cyan",
+                AgentMode.Planning => "yellow",
+                AgentMode.Orchestrator => "magenta",
                 _ => "white"
             };
         }
@@ -475,12 +475,12 @@ namespace duo_code.Services
             Console.WriteLine();
 
             // Create a nice completion panel
-            var panel = new Panel(BuildCompletionTable(options, prefix))
+            var panel = new Spectre.Console.Panel(BuildCompletionTable(options, prefix))
             {
                 Header = new PanelHeader("[dim]💡 Available Commands[/]"),
                 Border = BoxBorder.Rounded,
                 BorderStyle = Style.Parse("dim"),
-                Padding = new Padding(1, 0, 1, 0)
+                Padding = new Spectre.Console.Padding(1, 0, 1, 0)
             };
 
             AnsiConsole.Write(panel);
@@ -548,8 +548,6 @@ namespace duo_code.Services
             return str1[..commonLength];
         }
 
-
-        
         private void UpdateFileSuggestions(string line, int cursorPosition)
         {
             var (atIndex, searchTerm) = FindFileReferenceContext(line, cursorPosition);
@@ -884,7 +882,5 @@ namespace duo_code.Services
                 }
             }
         }
-        
-
     }
 }

@@ -26,7 +26,7 @@ namespace duo_code.Services
             Console.ResetColor();
         }
 
-        public async Task<(string input, Mode? modeSwitch)> GetUserInputAsync(Mode currentMode)
+        public async Task<(string input, AgentMode? modeSwitch)> GetUserInputAsync(AgentMode currentMode)
         {
             Console.ForegroundColor = UserColor;
             Console.Write($"[{currentMode.ToDisplayString()}]> ");
@@ -85,14 +85,14 @@ namespace duo_code.Services
             return (input ?? string.Empty, null);
         }
 
-        private Mode GetNextMode(Mode currentMode)
+        private AgentMode GetNextMode(AgentMode currentMode)
         {
             return currentMode switch
             {
-                Mode.Default => Mode.Planning,
-                Mode.Planning => Mode.Orchestrator,
-                Mode.Orchestrator => Mode.Default,
-                _ => Mode.Default
+                AgentMode.Default => AgentMode.Planning,
+                AgentMode.Planning => AgentMode.Orchestrator,
+                AgentMode.Orchestrator => AgentMode.Default,
+                _ => AgentMode.Default
             };
         }
 

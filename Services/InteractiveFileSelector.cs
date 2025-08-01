@@ -76,7 +76,7 @@ public class InteractiveFileSelector
 
     private void ShowNoResultsMessage(string searchTerm)
     {
-        var noResultsPanel = new Panel($"No files found matching '[yellow]{searchTerm}[/]'")
+        var noResultsPanel = new Spectre.Console.Panel($"No files found matching '[yellow]{searchTerm}[/]'")
         {
             Header = new PanelHeader("[red]❌ No Results[/]"),
             Border = BoxBorder.Rounded,

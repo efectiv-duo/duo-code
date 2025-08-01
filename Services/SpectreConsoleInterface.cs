@@ -21,7 +21,7 @@ namespace duo_code.Services
             };
             AnsiConsole.Write(rule);
             
-            var panel = new Panel(new Markup(
+            var panel = new Spectre.Console.Panel(new Markup(
                 "[dim]Type [bold]/help[/] for available commands or [bold]/exit[/] to quit.[/]\n" +
                 "[dim]Use [bold cyan]Shift+Tab[/] to switch between modes.[/]\n" +
                 "[dim]Navigation: [bold green]↑↓[/] for history, [bold green]←→[/] for cursor, [bold green]Tab[/] for completion[/]"))
@@ -46,14 +46,14 @@ namespace duo_code.Services
             _commandRegistry = commandRegistry;
         }
         
-        public async Task<(string input, Mode? modeSwitch)> GetUserInputAsync(Mode currentMode)
+        public async Task<(string input, AgentMode? modeSwitch)> GetUserInputAsync(AgentMode currentMode)
         {
             LoadCommandHistory();
             
             return await Task.Run(() => GetUserInputWithCustomHandling(currentMode));
         }
         
-        private (string input, Mode? modeSwitch) GetUserInputWithCustomHandling(Mode currentMode)
+        private (string input, AgentMode? modeSwitch) GetUserInputWithCustomHandling(AgentMode currentMode)
         {
             var customInput = new CustomTextInput(_commandRegistry, _commandHistory, currentMode);
             var result = customInput.ReadInput();
@@ -289,42 +289,42 @@ namespace duo_code.Services
             return str1[..commonLength];
         }
         
-        private string GetStyledPrompt(Mode currentMode)
+        private string GetStyledPrompt(AgentMode currentMode)
         {
             return currentMode switch
             {
-                Mode.Default => "[bold cyan][[DEFAULT]][/]> ",
-                Mode.Planning => "[bold yellow][[PLANNING]][/]> ",
-                Mode.Orchestrator => "[bold magenta][[ORCHESTRATOR]][/]> ",
+                AgentMode.Default => "[bold cyan][[DEFAULT]][/]> ",
+                AgentMode.Planning => "[bold yellow][[PLANNING]][/]> ",
+                AgentMode.Orchestrator => "[bold magenta][[ORCHESTRATOR]][/]> ",
                 _ => "[bold white][[UNKNOWN]][/]> "
             };
         }
         
-        private int GetPromptLength(Mode currentMode)
+        private int GetPromptLength(AgentMode currentMode)
         {
             return currentMode switch
             {
-                Mode.Default => "[DEFAULT]> ".Length,
-                Mode.Planning => "[PLANNING]> ".Length,
-                Mode.Orchestrator => "[ORCHESTRATOR]> ".Length,
+                AgentMode.Default => "[DEFAULT]> ".Length,
+                AgentMode.Planning => "[PLANNING]> ".Length,
+                AgentMode.Orchestrator => "[ORCHESTRATOR]> ".Length,
                 _ => "[UNKNOWN]> ".Length
             };
         }
 
-        private Mode GetNextMode(Mode currentMode)
+        private AgentMode GetNextMode(AgentMode currentMode)
         {
             return currentMode switch
             {
-                Mode.Default => Mode.Planning,
-                Mode.Planning => Mode.Orchestrator,
-                Mode.Orchestrator => Mode.Default,
-                _ => Mode.Default
+                AgentMode.Default => AgentMode.Planning,
+                AgentMode.Planning => AgentMode.Orchestrator,
+                AgentMode.Orchestrator => AgentMode.Default,
+                _ => AgentMode.Default
             };
         }
 
         public void ShowAssistantResponse(string response)
         {
-            var panel = new Panel(new Text(response))
+            var panel = new Spectre.Console.Panel(new Text(response))
             {
                 Header = new PanelHeader("[yellow]Assistant[/]"),
                 Border = BoxBorder.Rounded,
@@ -341,7 +341,7 @@ namespace duo_code.Services
 
         public void ShowToolResult(string result)
         {
-            var panel = new Panel(new Text(result))
+            var panel = new Spectre.Console.Panel(new Text(result))
             {
                 Header = new PanelHeader("[cyan]Tool Result[/]"),
                 Border = BoxBorder.Rounded,
@@ -353,7 +353,7 @@ namespace duo_code.Services
 
         public void ShowError(string error)
         {
-            var panel = new Panel(new Text(error))
+            var panel = new Spectre.Console.Panel(new Text(error))
             {
                 Header = new PanelHeader("[red]Error[/]"),
                 Border = BoxBorder.Heavy,
@@ -368,19 +368,19 @@ namespace duo_code.Services
             AnsiConsole.WriteLine(info, Style.Parse("dim"));
         }
         
-        public void ShowModeSwitch(Mode newMode)
+        public void ShowModeSwitch(AgentMode newMode)
         {
             var modeColor = newMode switch
             {
-                Mode.Default => "cyan",
-                Mode.Planning => "yellow", 
-                Mode.Orchestrator => "magenta",
+                AgentMode.Default => "cyan",
+                AgentMode.Planning => "yellow", 
+                AgentMode.Orchestrator => "magenta",
                 _ => "white"
             };
             
-            var panel = new Panel(new Text($"Switched to {newMode.ToDisplayString()} mode"))
+            var panel = new Spectre.Console.Panel(new Text($"Switched to {newMode.ToDisplayString()} mode"))
             {
-                Header = new PanelHeader($"[{modeColor}]Mode Switch[/]"),
+                Header = new PanelHeader($"[{modeColor}]AgentMode Switch[/]"),
                 Border = BoxBorder.Rounded,
                 BorderStyle = Style.Parse(modeColor)
             };
@@ -445,7 +445,7 @@ namespace duo_code.Services
                 
                 // Show graceful exit message
                 Console.WriteLine();
-                var panel = new Panel(new Text("Operation cancelled by user."))
+                var panel = new Spectre.Console.Panel(new Text("Operation cancelled by user."))
                 {
                     Header = new PanelHeader("[yellow]Cancelled[/]"),
                     Border = BoxBorder.Rounded,

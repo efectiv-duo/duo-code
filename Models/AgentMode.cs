@@ -2,7 +2,7 @@
 
 namespace duo_code.Models
 {
-    public enum Mode
+    public enum AgentMode
     {
         Default,
         Planning,
@@ -11,24 +11,24 @@ namespace duo_code.Models
 
     public static class ModeExtensions
     {
-        public static string ToDisplayString(this Mode mode)
+        public static string ToDisplayString(this AgentMode mode)
         {
             return mode switch
             {
-                Mode.Default => "DEFAULT",
-                Mode.Planning => "PLANNING",
-                Mode.Orchestrator => "ORCHESTRATOR",
+                AgentMode.Default => "DEFAULT",
+                AgentMode.Planning => "PLANNING",
+                AgentMode.Orchestrator => "ORCHESTRATOR",
                 _ => "UNKNOWN"
             };
         }
 
-        public static string GetSystemPrompt(this Mode mode)
+        public static string GetSystemPrompt(this AgentMode mode)
         {
             return mode switch
             {
-                Mode.Default => GetDefaultSystemPrompt(),
-                Mode.Planning => GetPlanningSystemPrompt(),
-                Mode.Orchestrator => GetOrchestratorSystemPrompt(),
+                AgentMode.Default => GetDefaultSystemPrompt(),
+                AgentMode.Planning => GetPlanningSystemPrompt(),
+                AgentMode.Orchestrator => GetOrchestratorSystemPrompt(),
                 _ => GetDefaultSystemPrompt()
             };
         }
@@ -37,37 +37,17 @@ namespace duo_code.Models
         {
             var builder = new StringBuilder();
 
-            builder.AppendLine(@"You are an agent.");
+            builder.AppendLine(@"You are an agent in control of this computer.");
             builder.AppendLine(@"Use the FINISH_TASK tool when you have completed all your tasks.");
             builder.AppendLine();
             builder.AppendLine("## Core Loop");
             builder.AppendLine();
-            builder.AppendLine("**observe** → **orient** → **decide** → **act** → **test** → **document**");
-            builder.AppendLine();
-            builder.AppendLine("### 1. Observe");
-            builder.AppendLine("Gather complete context: user request, codebase state, dependencies, constraints.");
-            builder.AppendLine();
-            builder.AppendLine("### 2. Orient");
-            builder.AppendLine("Analyze patterns, synthesize insights, map current→desired state.");
-            builder.AppendLine();
-            builder.AppendLine("### 3. Decide");
-            builder.AppendLine("Evaluate options, select optimal approach considering trade-offs.");
-            builder.AppendLine();
-            builder.AppendLine("### 4. Act");
-            builder.AppendLine("Execute solution systematically with precision.");
-            builder.AppendLine();
-            builder.AppendLine("### 5. Test");
-            builder.AppendLine("Validate functionality, run tests, verify requirements met.");
-            builder.AppendLine();
-            builder.AppendLine("### 6. Document");
-            builder.AppendLine("Update code docs, README, architecture decisions as needed.");
+            builder.AppendLine("**observe** → **orient** → **decide** → **act**");
             builder.AppendLine();
             builder.AppendLine("## Output");
             builder.AppendLine("- I always answer with tool uses. The user responds with the tools result.");
             builder.AppendLine("- I will run multiple tools in one turn, but only if they don't depend on each other's output.");
             builder.AppendLine("- I do not use markdown formatting in my responses.");
-            builder.AppendLine("- Path should always start from current directory (.)");
-            builder.AppendLine("- Tools RUN");
 
             return builder.ToString();
         }

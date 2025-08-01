@@ -113,6 +113,24 @@ public static class ToolFactory
                     var prompt = string.Join(Environment.NewLine, lines.Skip(contentStartIndex).Take(contentEndIndex - contentStartIndex));
                     action = new SpawnSubagentAction { TaskDescription = args, Prompt = prompt };
                     break;
+                case "MOUSE_CLICK":
+                    action = new MouseClickAction { Input = args };
+                    break;
+                case "MOUSE_MOVE":
+                    action = new MouseMoveAction { Coordinates = args };
+                    break;
+                case "KEYBOARD_TYPE":
+                    action = new KeyboardTypeAction { Text = args };
+                    break;
+                case "KEYBOARD_PRESS":
+                    action = new KeyboardPressAction { Keys = args };
+                    break;
+                case "MOUSE_SCROLL":
+                    action = new MouseScrollAction { Parameters = args };
+                    break;
+                case "WAIT":
+                    action = new WaitAction { Seconds = args };
+                    break;
             }
 
             if (action != null)

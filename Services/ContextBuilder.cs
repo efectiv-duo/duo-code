@@ -16,14 +16,17 @@ namespace duo_code.Services
             _toolRegistry = new ToolRegistry();
         }
 
-        public string BuildContext(Mode mode = Mode.Default)
+        public string BuildContext(AgentMode mode = AgentMode.Default)
         {
             var builder = new StringBuilder();
-            
+
+            // Read screen DOM
+            var doc = ScreenReaderService.ReadScreen();
+
             // Add mode-specific system prompt
             builder.AppendLine(mode.GetSystemPrompt());
             builder.AppendLine();
-            builder.AppendLine($"Working directory: {Directory.GetCurrentDirectory()}");
+            builder.AppendLine($"## Current screen: {doc.ToString()}");
             builder.AppendLine();
             
             // Add tool instructions

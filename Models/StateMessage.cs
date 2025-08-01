@@ -1,7 +1,4 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text.Json.Serialization;
+using duo_code.Services;
 using duo_code.Tools.Core;
 
 namespace duo_code.Models;
@@ -10,7 +7,7 @@ namespace duo_code.Models;
 /// Internal message representation for session history.
 /// Contains additional metadata and tracking information not sent to the API.
 /// </summary>
-public class Message
+public class StateMessage
 {
     public string? Role { get; set; } // "system", "user", "assistant"
     public string Content { get; set; } = string.Empty; // Clean response without thinking blocks
@@ -34,15 +31,20 @@ public class Message
             .Where(action => action.FullResult != null)
             .Select(action => FormatToolResult(action, forSummary));
 
-        return string.Join("\n\n", results);
+        var output = string.Join("\n\n", results);
+
+        // Read screen DOM
+        var doc = ScreenReaderService.ReadScreen();
+
+        return output + $"\n\n Screen: {doc.ToString()}";
     }
 
     private string FormatToolResult(IToolAction action, bool forSummary)
     {
-        var resultText = forSummary && action.SummarizedResult != null 
-            ? action.SummarizedResult 
+        var resultText = forSummary && action.SummarizedResult != null
+            ? action.SummarizedResult
             : action.FullResult;
-            
+
         return $"{resultText}";
     }
 
@@ -66,7 +68,7 @@ public class Message
     private string GetUserMessageContent(int distanceToHead, int historyTotalLength)
     {
         // if (Actions == null || Actions.Count == 0)
-            return Content;
+        return Content;
 
         var shouldUseSummary = CalculateHistoricalDistance(distanceToHead, historyTotalLength) > 0.75;
         return shouldUseSummary ? BuildToolResultsMessage(true) : Content;
@@ -76,7 +78,7 @@ public class Message
     {
         // For the most recent assistant message, include thinking
         // if (distanceToHead == 0 && Thinking.Length > 0)
-            return ContentWithThinking;
+        return ContentWithThinking;
 
         return TruncateContent(distanceToHead, historyTotalLength);
     }
@@ -85,7 +87,7 @@ public class Message
     {
         var maxLines = GetMaxLinesForDistance(distanceToHead, historyTotalLength);
         var lines = Content.Split('\n');
-        
+
         if (lines.Length <= maxLines)
             return Content;
 
@@ -97,7 +99,7 @@ public class Message
     private int GetMaxLinesForDistance(int distanceToHead, int historyTotalLength)
     {
         var distance = CalculateHistoricalDistance(distanceToHead, historyTotalLength);
-        
+
         return distance switch
         {
             < 0.25f => 15,  // Recent messages

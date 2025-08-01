@@ -125,18 +125,22 @@ namespace duo_code.Services
             var fileReferenceResult = await _fileReferenceService.ProcessFileReferencesAsync(userInput);
             
             // Add user message
-            _state.Messages.Add(new Message { Role = "user", Content = fileReferenceResult.ProcessedUserContent });
+            _state.Messages.Add(new StateMessage { Role = "user", Content = fileReferenceResult.ProcessedUserContent });
             
             // Add system message with file references if any exist
             if (fileReferenceResult.HasFileReferences && !string.IsNullOrEmpty(fileReferenceResult.SystemMessageContent))
             {
-                _state.Messages.Add(new Message { Role = "system", Content = fileReferenceResult.SystemMessageContent });
+                _state.Messages.Add(new StateMessage { Role = "system", Content = fileReferenceResult.SystemMessageContent });
             }
 
-            // Continue prompting until FINISH_TASK is received
+            // Continue prompting until FINISH_TASK is received or max operations reached
             bool taskCompleted = false;
-            while (!taskCompleted)
+            int operationCount = 0;
+            const int maxOperations = 10;
+            
+            while (!taskCompleted && operationCount < maxOperations)
             {
+                operationCount++;
                 var messageHistory = BuildMessageHistory();
 
                 _logger.SaveConversation(messageHistory);
@@ -179,12 +183,12 @@ namespace duo_code.Services
 
         private Task<bool> ProcessAssistantResponseAsync(ProcessedResponse response)
         {
-            return Task.Run(() =>
+            return Task.Run(async () =>
             {
                 var tools = ToolFactory.Parse(response.Content);
                 bool finishTaskFound = false;
 
-                var message = new Message
+                var message = new StateMessage
                 {
                     Role = "assistant",
                     Content = response.Content,
@@ -219,11 +223,13 @@ namespace duo_code.Services
                 }
 
                 _state.Messages.Add(message);
+
+                await Task.Delay(50);
                 
                 // Add tool results as a user message if there were any tools executed
                 if (message.Actions != null && message.Actions.Count > 0)
                 {
-                    var toolResultsMessage = new Message
+                    var toolResultsMessage = new StateMessage
                     {
                         Role = "user",
                         Content = message.BuildToolResultsMessage(),
@@ -255,9 +261,9 @@ namespace duo_code.Services
             });
         }
 
-        private List<Message> BuildMessageHistory()
+        private List<StateMessage> BuildMessageHistory()
         {
-            var history = new List<Message>();
+            var history = new List<StateMessage>();
             
             // Add dynamic starter messages first
             var starterMessages = BuildDynamicStarterMessages();
@@ -270,7 +276,7 @@ namespace duo_code.Services
                 var message = _state.Messages[i];
                 var distanceFromHead = messageCount - i - 1;
 
-                history.Add(new Message
+                history.Add(new StateMessage
                 {
                     Role = message.Role,
                     Content = message.GetContentForHistory(distanceFromHead, messageCount)
@@ -280,24 +286,24 @@ namespace duo_code.Services
             return history;
         }
 
-        private List<Message> BuildDynamicStarterMessages()
+        private List<StateMessage> BuildDynamicStarterMessages()
         {
             var contextBuilder = new ContextBuilder();
             var contextFactory = new CodebaseContextFactory(Directory.GetCurrentDirectory());
 
-            var starterMessages = new List<Message>
+            var starterMessages = new List<StateMessage>
             {
-                new Message
+                new StateMessage
                 {
                     Role = "system",
                     Content = contextBuilder.BuildContext(_state.CurrentMode)
                 },
-                new Message
+                new StateMessage
                 {
                     Role = "user",
                     Content = "Analyze the current directory context."
                 },
-                new Message
+                new StateMessage
                 {
                     Role = "assistant",
                     Content = "STARTER_CONTEXT: ."
@@ -305,13 +311,13 @@ namespace duo_code.Services
             };
 
             var context = contextFactory.CreateContext();
-            starterMessages.Add(new Message
+            starterMessages.Add(new StateMessage
             {
                 Role = "user",
                 Content = context.ToJson()
             });
 
-            starterMessages.Add(new Message
+            starterMessages.Add(new StateMessage
             {
                 Role = "assistant",
                 Content = @"FINISH_TASK:
