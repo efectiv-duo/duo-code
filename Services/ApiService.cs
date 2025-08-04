@@ -6,56 +6,23 @@ using duo_code.Models;
 
 namespace duo_code.Services;
 
-public enum ApiProvider
-{
-    Cerebras,
-    Gemini
-}
-
-public static class ApiSettings
-{
-    public static ApiProvider CurrentProvider { get; set; } = ApiProvider.Cerebras;
-    public static string CurrentModel { get; set; } = "qwen-3-235b-a22b";
-    public static string FallbackModel { get; set; } = "qwen-3-32b";
-    
-    public static readonly Dictionary<ApiProvider, List<string>> AvailableModels = new()
-    {
-        {
-            ApiProvider.Cerebras, new List<string>
-            {
-                "qwen-3-235b-a22b",
-                "qwen-3-32b",
-                "llama-4-maverick-17b-128e-instruct",
-                "llama-4-scout-17b-16e-instruct",
-                "deepseek-r1-distill-llama-70b",
-                "llama-3.3-70b"
-            }
-        },
-        {
-            ApiProvider.Gemini, new List<string>
-            {
-                "gemini-2.5-flash"
-            }
-        }
-    };
-}
-
-public class CerebrasApiService : IApiService
+public class ApiService : IApiService
 {
     private readonly HttpClient _httpClient;
     private readonly string _apiUrl = "https://api.cerebras.ai/v1/chat/completions";
     
-    public CerebrasApiService(string apiKey)
+    public ApiService(string apiKey)
     {
         _httpClient = new HttpClient();
+
         _httpClient.DefaultRequestHeaders.Clear();
         _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
     }
     
-    public async Task<ProcessedResponse> GetAISuggestionAsync(List<CerebrasMessage> messages, CancellationToken cancellationToken = default, string? model = null, SpectreConsoleInterface? console = null)
+    public async Task<ProcessedResponse> GetAISuggestionAsync(List<CerebrasMessage> messages, CancellationToken cancellationToken = default, string? model = null, ConsoleInterface? console = null)
     {
         // Use provided model or fall back to current model setting
-        var targetModel = model ?? ApiSettings.CurrentModel;
+        var targetModel = model ?? CurrentState.Model;
         
         // Try with the target model first
         var response = await TryGetAISuggestionWithModelAsync(messages, targetModel, cancellationToken);
@@ -63,11 +30,11 @@ public class CerebrasApiService : IApiService
         // If we get a 429 (Too Many Requests), try with the fallback model
         if (response.StatusCode == HttpStatusCode.TooManyRequests)
         {
-            console?.ShowInfo($"Rate limit reached for {targetModel}, falling back to {ApiSettings.FallbackModel}...");
+            console?.ShowInfo($"Rate limit reached for {targetModel}, falling back to {CurrentState.FallbackModel}...");
 
-            ApiSettings.CurrentModel = ApiSettings.FallbackModel;
+            CurrentState.Model = CurrentState.FallbackModel;
 
-            response = await TryGetAISuggestionWithModelAsync(messages, ApiSettings.FallbackModel, cancellationToken);
+            response = await TryGetAISuggestionWithModelAsync(messages, CurrentState.FallbackModel, cancellationToken);
         }
         
         if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)

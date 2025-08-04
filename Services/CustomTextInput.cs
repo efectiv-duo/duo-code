@@ -50,36 +50,6 @@ namespace duo_code.Services
 
         public (string input, Mode? modeSwitch) ReadInput()
         {
-            // Create a styled input box
-            var panel = new Panel("")
-            {
-                Header = new PanelHeader(GetModeHeader()),
-                Border = BoxBorder.Rounded,
-                BorderStyle = Style.Parse(GetModeColor()),
-                Padding = new Padding(1, 0, 1, 0)
-            };
-
-            // Show the input box frame
-            var inputArea = new Layout("input")
-                .SplitRows(
-                    new Layout("prompt").Size(3),
-                    new Layout("content").Size(1)
-                );
-
-            // Show mode-specific styling with emoji indicators
-            var modeEmoji = _currentMode switch
-            {
-                Mode.Default => "🤖",
-                Mode.Planning => "📋",
-                Mode.Orchestrator => "🎯",
-                _ => "❓"
-            };
-            
-            AnsiConsole.Write(new Rule($"[bold {GetModeColor()}]{modeEmoji} {_currentMode.ToDisplayString()} Mode[/]")
-            {
-                Style = Style.Parse(GetModeColor())
-            });
-
             // Custom input handling with enhanced visuals
             var line = "";
             var cursorPosition = 0;

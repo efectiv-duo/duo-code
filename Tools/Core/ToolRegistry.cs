@@ -109,14 +109,5 @@ namespace duo_code.Tools.Core
         {
             return _toolTypes.Keys.ToList();
         }
-
-        public IToolAction? CreateTool(string name, Mode mode = Mode.Default)
-        {
-            if (_toolTypes.TryGetValue(name, out var type) && IsToolAvailableForMode(name, mode))
-            {
-                return Activator.CreateInstance(type) as IToolAction;
-            }
-            return null;
-        }
     }
 }

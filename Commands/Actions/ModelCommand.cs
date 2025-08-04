@@ -24,8 +24,8 @@ namespace duo_code.Commands.Actions
             try
             {
                 // Show current selection
-                var currentProvider = ApiSettings.CurrentProvider;
-                var currentModel = ApiSettings.CurrentModel;
+                var currentProvider = CurrentState.Provider;
+                var currentModel = CurrentState.Model;
                 
                 var currentPanel = new Panel($"[bold]Provider:[/] {currentProvider}\n[bold]Model:[/] {currentModel}")
                 {
@@ -57,11 +57,11 @@ namespace duo_code.Commands.Actions
                 var selectedModel = allModels[selectedIndex];
 
                 // Update settings
-                ApiSettings.CurrentProvider = selectedModel.Provider;
-                ApiSettings.CurrentModel = selectedModel.Model;
+                CurrentState.Provider = selectedModel.Provider;
+                CurrentState.Model = selectedModel.Model;
                 
                 // Save the settings
-                ApiKeyManager.SaveCurrentSettings(ApiSettings.CurrentProvider, ApiSettings.CurrentModel);
+                ApiKeyManager.SaveCurrentSettings(CurrentState.Provider, CurrentState.Model);
 
                 // Show success message
                 var successPanel = new Panel($"[bold]Provider:[/] {selectedModel.Provider}\n[bold]Model:[/] {selectedModel.Model}")
@@ -84,7 +84,7 @@ namespace duo_code.Commands.Actions
         {
             var result = new List<(ApiProvider, string)>();
 
-            foreach (var provider in ApiSettings.AvailableModels)
+            foreach (var provider in CurrentState.AvailableModels)
             {
                 foreach (var model in provider.Value)
                 {
@@ -107,7 +107,7 @@ namespace duo_code.Commands.Actions
 
         private Task<CommandResult> ShowProviders()
         {
-            var currentProvider = ApiSettings.CurrentProvider;
+            var currentProvider = CurrentState.Provider;
             var providers = string.Join("\n", Enum.GetNames<ApiProvider>().Select(p => 
                 p == currentProvider.ToString() ? $"  {p} (current)" : $"  {p}"));
             var message = $"Available providers:\n{providers}\n\nUsage: /model provider <name>";
@@ -117,8 +117,8 @@ namespace duo_code.Commands.Actions
         private Task<CommandResult> ShowAvailableModels()
         {
             var allModels = GetAllModelsWithNumbers();
-            var currentProvider = ApiSettings.CurrentProvider;
-            var currentModel = ApiSettings.CurrentModel;
+            var currentProvider = CurrentState.Provider;
+            var currentModel = CurrentState.Model;
             
             var modelList = string.Join("\n", allModels.Select(kvp => 
             {
@@ -136,7 +136,7 @@ namespace duo_code.Commands.Actions
             var result = new Dictionary<string, (ApiProvider, string)>();
             int counter = 1;
 
-            foreach (var provider in ApiSettings.AvailableModels)
+            foreach (var provider in CurrentState.AvailableModels)
             {
                 foreach (var model in provider.Value)
                 {

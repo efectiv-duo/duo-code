@@ -14,6 +14,7 @@ namespace duo_code.Commands.Core
         public CommandRegistry(string? promptsDirectory = null)
         {
             _promptsDirectory = promptsDirectory ?? GetDefaultPromptsDirectory();
+
             RegisterCommands();
             LoadPromptCommands();
         }
@@ -24,7 +25,6 @@ namespace duo_code.Commands.Core
             {
                 Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Commands", "Prompts"),
                 Path.Combine(Directory.GetCurrentDirectory(), "Commands", "Prompts"),
-                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "Commands", "Prompts")
             };
 
             return possiblePaths.FirstOrDefault(Directory.Exists) ?? possiblePaths[0];
@@ -70,25 +70,6 @@ namespace duo_code.Commands.Core
             _commands[command.Name] = command;
 
             // Register aliases if command has them
-
-            // if (command is ModelCommand modelCmd)
-            // {
-            //     _commands["m"] = modelCmd;
-            // }
-            // else if (command is HelpCommand helpCmd)
-            // {
-            //     _commands["h"] = helpCmd;
-            //     _commands["?"] = helpCmd;
-            // }
-            // else if (command is ExitCommand exitCmd)
-            // {
-            //     _commands["quit"] = exitCmd;
-            //     _commands["q"] = exitCmd;
-            // }
-            // else if (command is ClearCommand clearCmd)
-            // {
-            //     _commands["cls"] = clearCmd;
-            // }
             if (command is IHasAliases aliasCommand)
             {
                 foreach (var alias in aliasCommand.GetAliases())

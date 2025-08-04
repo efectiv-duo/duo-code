@@ -13,8 +13,7 @@ namespace duo_code.Services
         private readonly CommandRegistry _commandRegistry;
         private readonly ToolRegistry _toolRegistry;
         private readonly StreamingResponseService _responseProcessor;
-        private readonly SpectreConsoleInterface _console;
-        private readonly ConversationState _state;
+        private readonly ConsoleInterface _console;
         private readonly ConversationLogger _logger;
         private readonly IFileReferenceService _fileReferenceService;
 
@@ -22,17 +21,15 @@ namespace duo_code.Services
             CommandRegistry commandRegistry,
             ToolRegistry toolRegistry,
             StreamingResponseService responseProcessor,
-            SpectreConsoleInterface console,
-            ConversationState state,
+            ConsoleInterface console,
             IFileReferenceService fileReferenceService = null)
         {
-            _currentProvider = ApiSettings.CurrentProvider;
+            _currentProvider = CurrentState.Provider;
             _apiService = ApiServiceFactory.CreateApiService(_currentProvider);
             _commandRegistry = commandRegistry;
             _toolRegistry = toolRegistry;
             _responseProcessor = responseProcessor;
             _console = console;
-            _state = state;
             _logger = new ConversationLogger();
             _fileReferenceService = fileReferenceService ?? new FileReferenceService();
         }
@@ -47,16 +44,16 @@ namespace duo_code.Services
         {
             _console.ShowWelcomeMessage();
 
-            while (_state.IsRunning && !cancellationToken.IsCancellationRequested)
+            while (CurrentState.IsRunning && !cancellationToken.IsCancellationRequested)
             {
                 try
                 {
-                    var (input, modeSwitch) = await _console.GetUserInputAsync(_state.CurrentMode);
+                    var (input, modeSwitch) = await _console.GetUserInputAsync(CurrentState.CurrentMode);
                         
                     // Handle mode switch
                     if (modeSwitch.HasValue)
                     {
-                        _state.CurrentMode = modeSwitch.Value;
+                        CurrentState.CurrentMode = modeSwitch.Value;
                         continue;
                     }
                         
@@ -68,7 +65,10 @@ namespace duo_code.Services
                     }
                     else
                     {
-                        await ProcessUserMessageAsync(input);
+                        await ShowProgressAsync("Agent is running (esc to interrupt)", async () =>
+                        {
+                            await ProcessUserMessageAsync(input);
+                        });
                     }
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -115,7 +115,7 @@ namespace duo_code.Services
 
             if (result.ShouldExit)
             {
-                _state.IsRunning = false;
+                CurrentState.IsRunning = false;
             }
         }
 
@@ -125,12 +125,12 @@ namespace duo_code.Services
             var fileReferenceResult = await _fileReferenceService.ProcessFileReferencesAsync(userInput);
             
             // Add user message
-            _state.Messages.Add(new Message { Role = "user", Content = fileReferenceResult.ProcessedUserContent });
+            CurrentState.Messages.Add(new Message { Role = "user", Content = fileReferenceResult.ProcessedUserContent });
             
             // Add system message with file references if any exist
             if (fileReferenceResult.HasFileReferences && !string.IsNullOrEmpty(fileReferenceResult.SystemMessageContent))
             {
-                _state.Messages.Add(new Message { Role = "system", Content = fileReferenceResult.SystemMessageContent });
+                CurrentState.Messages.Add(new Message { Role = "system", Content = fileReferenceResult.SystemMessageContent });
             }
 
             // Continue prompting until FINISH_TASK is received
@@ -156,18 +156,16 @@ namespace duo_code.Services
                         Content = m.Content
                     }).ToList();
 
-                    await AnsiConsole.Status()
-                        .Spinner(Spinner.Known.Flip)
-                        .SpinnerStyle(Style.Parse("green bold"))
-                        .StartAsync("Waiting for a response...", async ctx =>
-                        {
-                            var processedResponse = await _apiService.GetAISuggestionAsync(cerebrasMessages, cts.Token, ApiSettings.CurrentModel, _console);
+                    WriteInfo("Sent API request.");
 
-                            if (!string.IsNullOrWhiteSpace(processedResponse?.Content))
-                            {
-                                taskCompleted = await ProcessAssistantResponseAsync(processedResponse);
-                            }
-                        });
+                    var processedResponse = await _apiService.GetAISuggestionAsync(cerebrasMessages, cts.Token, CurrentState.Model, _console);
+
+                    if (!string.IsNullOrWhiteSpace(processedResponse?.Content))
+                    {
+                        WriteInfo("Reading response.");
+
+                        taskCompleted = await ProcessAssistantResponseAsync(processedResponse);
+                    }
                 }
                 catch (OperationCanceledException)
                 {
@@ -194,7 +192,7 @@ namespace duo_code.Services
 
                 foreach (var tool in tools)
                 {
-                    _console.ShowToolExecution(tool.ToolName);
+                    WriteInfo($"Executing {tool.ToolName}");
 
                     // Check if this is the FINISH_TASK tool
                     if (tool.ToolName == "FINISH_TASK")
@@ -205,7 +203,7 @@ namespace duo_code.Services
                     try
                     {
                         var result = tool.Execute(Directory.GetCurrentDirectory());
-                        _console.ShowToolResult(result);
+                        WriteToolResult(result);
                         tool.FullResult = result;
                         message.Actions.Add(tool);
                     }
@@ -218,7 +216,7 @@ namespace duo_code.Services
                     }
                 }
 
-                _state.Messages.Add(message);
+                CurrentState.Messages.Add(message);
                 
                 // Add tool results as a user message if there were any tools executed
                 if (message.Actions != null && message.Actions.Count > 0)
@@ -229,17 +227,17 @@ namespace duo_code.Services
                         Content = message.BuildToolResultsMessage(),
                         Actions = message.Actions
                     };
-                    _state.Messages.Add(toolResultsMessage);
+                    CurrentState.Messages.Add(toolResultsMessage);
                 }
                 else
                 {
-                    _console.ShowAssistantResponse(response.Content);
+                    WriteAssistantResponse(response.Content);
 
                     finishTaskFound = true;
                 }
                 
                 // Save conversation after each assistant response
-                _logger.SaveConversation(_state.Messages);
+                _logger.SaveConversation(CurrentState.Messages);
                 
                 // Wait for user input before continuing (unless task is finished)
                 //if (!finishTaskFound)
@@ -264,10 +262,10 @@ namespace duo_code.Services
             history.AddRange(starterMessages);
             
             // Add user conversation messages
-            var messageCount = _state.Messages.Count;
+            var messageCount = CurrentState.Messages.Count;
             for (int i = 0; i < messageCount; i++)
             {
-                var message = _state.Messages[i];
+                var message = CurrentState.Messages[i];
                 var distanceFromHead = messageCount - i - 1;
 
                 history.Add(new Message
@@ -290,7 +288,7 @@ namespace duo_code.Services
                 new Message
                 {
                     Role = "system",
-                    Content = contextBuilder.BuildContext(_state.CurrentMode)
+                    Content = contextBuilder.BuildContext(CurrentState.CurrentMode)
                 },
                 new Message
                 {
@@ -323,10 +321,11 @@ Current directory context analyzed."
 
         private void RefreshApiServiceIfNeeded()
         {
-            if (_currentProvider != ApiSettings.CurrentProvider)
+            if (_currentProvider != CurrentState.Provider)
             {
                 _apiService?.Dispose();
-                _currentProvider = ApiSettings.CurrentProvider;
+
+                _currentProvider = CurrentState.Provider;
                 _apiService = ApiServiceFactory.CreateApiService(_currentProvider);
             }
         }

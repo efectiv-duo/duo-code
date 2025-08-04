@@ -2,17 +2,11 @@
 
 public static class ApiKeyManager
 {
-    // Load API key from persistent storage
-    public static string LoadApiKey()
-    {
-        return GetCerebrasApiKey();
-    }
-
-    public static string GetCerebrasApiKey()
+    public static string GetApiKey(ApiProvider apiProvider)
     {
         try
         {
-            string filePath = GetCerebrasApiKeyFilePath();
+            string filePath = GetApiKeyFilePath(apiProvider);
             if (File.Exists(filePath))
             {
                 return File.ReadAllText(filePath).Trim();
@@ -20,120 +14,38 @@ public static class ApiKeyManager
         }
         catch (Exception ex)
         {
-            Console.ForegroundColor = ConsoleColor.Yellow;
-            Console.WriteLine($"Warning: Could not read stored Cerebras API key: {ex.Message}");
-            Console.ResetColor();
-        }
-        return string.Empty;
-    }
-
-    public static string GetGeminiApiKey()
-    {
-        try
-        {
-            string filePath = GetGeminiApiKeyFilePath();
-            if (File.Exists(filePath))
-            {
-                return File.ReadAllText(filePath).Trim();
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.ForegroundColor = ConsoleColor.Yellow;
-            Console.WriteLine($"Warning: Could not read stored Gemini API key: {ex.Message}");
-            Console.ResetColor();
+            WriteWarning($"Warning: Could not read stored API key: {ex.Message}");
         }
         return string.Empty;
     }
 
     // Save API key to persistent storage
-    public static void SaveApiKey(string key)
+    public static void SaveApiKey(string key, ApiProvider apiProvider)
     {
         try
         {
-            string filePath = GetApiKeyFilePath();
+            string filePath = GetApiKeyFilePath(apiProvider);
             File.WriteAllText(filePath, key.Trim());
         }
         catch (Exception ex)
         {
-            Console.ForegroundColor = ConsoleColor.Yellow;
-            Console.WriteLine($"Warning: Could not save API key: {ex.Message}");
-            Console.ResetColor();
+            WriteError($"Warning: Could not save API key: {ex.Message}");
         }
     }
 
     // Get platform-agnostic storage path
-    private static string GetApiKeyFilePath()
+    private static string GetApiKeyFilePath(ApiProvider apiProvider)
     {
-        return GetCerebrasApiKeyFilePath();
-    }
+        string dir = Constants.GlobalConfigDirectory;
 
-    private static string GetCerebrasApiKeyFilePath()
-    {
-        string homeDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        string duocodeDir = Path.Combine(homeDirectory, ".duocode");
-        
-        // Ensure directory exists
-        if (!Directory.Exists(duocodeDir))
-        {
-            Directory.CreateDirectory(duocodeDir);
-        }
-        
         // Check new location first
-        string newPath = Path.Combine(duocodeDir, "cerebras_api_key");
-        if (File.Exists(newPath))
+        string path = Path.Combine(dir, $"{apiProvider.ToString().ToLower()}_api_key");
+        if (File.Exists(path))
         {
-            return newPath;
+            return path;
         }
-        
-        // Check old location and migrate if found
-        string oldPath = Path.Combine(homeDirectory, ".cerebras_api_key");
-        if (File.Exists(oldPath))
-        {
-            try
-            {
-                string key = File.ReadAllText(oldPath).Trim();
-                File.WriteAllText(newPath, key);
-                File.Delete(oldPath);
-            }
-            catch { }
-        }
-        
-        return newPath;
-    }
 
-    private static string GetGeminiApiKeyFilePath()
-    {
-        string homeDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        string duocodeDir = Path.Combine(homeDirectory, ".duocode");
-        
-        // Ensure directory exists
-        if (!Directory.Exists(duocodeDir))
-        {
-            Directory.CreateDirectory(duocodeDir);
-        }
-        
-        // Check new location first
-        string newPath = Path.Combine(duocodeDir, "gemini_api_key");
-        if (File.Exists(newPath))
-        {
-            return newPath;
-        }
-        
-        // Check old location and migrate if found
-        string oldPath = Path.Combine(homeDirectory, ".gemini_api_key");
-        if (File.Exists(oldPath))
-        {
-            try
-            {
-                string key = File.ReadAllText(oldPath).Trim();
-                File.WriteAllText(newPath, key);
-                File.Delete(oldPath);
-            }
-            catch { }
-        }
-        
-        return newPath;
+        return path;
     }
 
     // Model and provider settings
@@ -141,16 +53,9 @@ public static class ApiKeyManager
     {
         try
         {
-            string homeDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-            string duocodeDir = Path.Combine(homeDirectory, ".duocode");
-            
-            // Ensure the .duocode directory exists
-            if (!Directory.Exists(duocodeDir))
-            {
-                Directory.CreateDirectory(duocodeDir);
-            }
-            
-            string settingsPath = Path.Combine(duocodeDir, "model_settings.json");
+            string dir = Constants.GlobalConfigDirectory;
+                        
+            string settingsPath = Path.Combine(dir, Constants.MODEL_CONFIG_FILE_NAME);
             
             var settings = new
             {
@@ -163,9 +68,7 @@ public static class ApiKeyManager
         }
         catch (Exception ex)
         {
-            Console.ForegroundColor = ConsoleColor.Yellow;
-            Console.WriteLine($"Warning: Could not save settings: {ex.Message}");
-            Console.ResetColor();
+            WriteWarning($"Warning: Could not save settings: {ex.Message}");
         }
     }
 
@@ -173,9 +76,9 @@ public static class ApiKeyManager
     {
         try
         {
-            string homeDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-            string duocodeDir = Path.Combine(homeDirectory, ".duocode");
-            string settingsPath = Path.Combine(duocodeDir, "model_settings.json");
+            string dir = Constants.GlobalConfigDirectory;
+
+            string settingsPath = Path.Combine(dir, Constants.MODEL_CONFIG_FILE_NAME);
             
             // First try the new location
             if (File.Exists(settingsPath))
@@ -193,41 +96,13 @@ public static class ApiKeyManager
                     }
                 }
             }
-            
-            // Check old location for backward compatibility
-            string oldSettingsPath = Path.Combine(homeDirectory, ".duo_code_settings");
-            if (File.Exists(oldSettingsPath))
-            {
-                string json = File.ReadAllText(oldSettingsPath);
-                using var doc = System.Text.Json.JsonDocument.Parse(json);
-                var root = doc.RootElement;
-                
-                if (root.TryGetProperty("Provider", out var providerElement) && 
-                    root.TryGetProperty("Model", out var modelElement))
-                {
-                    if (Enum.TryParse<ApiProvider>(providerElement.GetString(), out var provider))
-                    {
-                        var result = (provider, modelElement.GetString() ?? "");
-                        
-                        // Migrate to new location
-                        SaveCurrentSettings(provider, result.Item2);
-                        
-                        // Delete old file
-                        try { File.Delete(oldSettingsPath); } catch { }
-                        
-                        return result;
-                    }
-                }
-            }
         }
         catch (Exception ex)
         {
-            Console.ForegroundColor = ConsoleColor.Yellow;
-            Console.WriteLine($"Warning: Could not load saved settings: {ex.Message}");
-            Console.ResetColor();
+            WriteWarning($"Warning: Could not load saved settings, reverting to defaults: {ex.Message}");
         }
         
         // Return defaults if loading fails
-        return (ApiProvider.Cerebras, "qwen-3-235b-a22b");
+        return (ApiProvider.Cerebras, "gemini-2.5-flash");
     }
 }
