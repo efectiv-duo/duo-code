@@ -1,5 +1,6 @@
 using duo_code.Commands.Core;
 using duo_code.Models;
+using duo_code.Tools;
 using duo_code.Tools.Core;
 using duo_code.Services.Interfaces;
 using Spectre.Console;
@@ -278,7 +279,15 @@ namespace duo_code.Services
         private List<Message> BuildDynamicStarterMessages()
         {
             var contextBuilder = new ContextBuilder();
-            var contextFactory = new CodebaseContextFactory(Directory.GetCurrentDirectory());
+
+            // Execute the ListFilesAction to get actual directory structure
+            var listFilesAction = new ListFilesAction
+            {
+                Path = ".",
+                Depth = 3,
+                DirectoriesOnly = false
+            };
+            var listResult = listFilesAction.Execute(Directory.GetCurrentDirectory());
 
             var starterMessages = new List<Message>
             {
@@ -290,21 +299,47 @@ namespace duo_code.Services
                 new Message
                 {
                     Role = "user",
-                    Content = "Analyze the current directory context."
+                    Content = "Analyze the current directory."
                 },
                 new Message
                 {
                     Role = "assistant",
-                    Content = "STARTER_CONTEXT: ."
+                    Content = "LIST_FILES: . depth:3 directories_only:false",
+                    Actions = new List<IToolAction> { listFilesAction }
+                },
+                new Message
+                {
+                    Role = "user",
+                    Content = listResult,
+                    Actions = new List<IToolAction> { listFilesAction }
                 }
             };
 
-            var context = contextFactory.CreateContext();
-            starterMessages.Add(new Message
+            // Check if DUOCODE.md exists and add its contents
+            var duocodeFilePath = Path.Combine(Directory.GetCurrentDirectory(), "DUOCODE.md");
+            if (File.Exists(duocodeFilePath))
             {
-                Role = "user",
-                Content = context.ToJson()
-            });
+                starterMessages.Add(new Message
+                {
+                    Role = "assistant",
+                    Content = "READ_FILE: DUOCODE.md purpose:I want to understand the context better."
+                });
+
+                var readFileAction = new ReadFileAction
+                {
+                    Path = "DUOCODE.md",
+                    CompressService = null,
+                    Purpose = "I want to understand the context better."
+                };
+                var duocodeContent = readFileAction.Execute(Directory.GetCurrentDirectory());
+
+                starterMessages.Add(new Message
+                {
+                    Role = "user",
+                    Content = duocodeContent,
+                    Actions = new List<IToolAction> { readFileAction }
+                });
+            }
 
             starterMessages.Add(new Message
             {

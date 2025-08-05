@@ -1,10 +1,10 @@
 # DUOCODE Project Documentation
 
-This document provides a comprehensive overview of the DUOCODE project, designed to assist future AI assistants in understanding, maintaining, and extending the codebase.
+This document provides a comprehensive overview of the Duo-Code project, designed to assist future AI assistants in understanding, maintaining, and developing the codebase.
 
 ## 1. Project Overview
 
-DUOCODE is a console-based AI assistant designed to help developers with various coding tasks. It acts as an interactive agent that can understand natural language commands, execute tools (like file operations, command execution, and code search), interact with large language models (LLMs) from different providers (e.g., Cerebras, Gemini), and potentially solve coding challenges. Its primary purpose is to streamline development workflows by providing an intelligent, interactive coding companion.
+Duo-Code is an interactive AI agent application designed to assist users with coding and development tasks. It operates as a command-line interface (CLI) tool, capable of interacting with various AI models (e.g., Cerebras, Gemini) to process user requests, execute system commands, and perform file operations. The agent can run in an interactive mode, engaging in a continuous conversation, or in a subagent mode, processing a single prompt and exiting. Its core purpose is to automate and streamline development workflows by leveraging AI capabilities.
 
 ## 2. Project Structure
 
@@ -36,81 +36,86 @@ The project follows a modular structure, organizing code into logical directorie
 
 ## 3. Architecture
 
-DUOCODE is built as a console application using .NET 8.0. Its architecture is centered around a command-line interface (CLI) and an AI agent that orchestrates interactions.
+The Duo-Code application follows a layered architecture with a strong emphasis on separation of concerns and extensibility.
 
-*   **Command Pattern**: User inputs are parsed into commands, which are then executed. `ICommand` defines the contract for executable commands, and `CommandRegistry` manages their discovery and invocation.
-*   **Tooling System**: The AI agent interacts with the environment through a set of predefined "tools." Each tool is an `IToolAction` implementation, allowing the agent to perform actions like reading/writing files, running shell commands, and searching the codebase. `ToolRegistry` manages available tools.
-*   **Service-Oriented Design**: Core functionalities (like API interactions, configuration, conversation state management) are encapsulated within dedicated services.
-*   **LLM Integration**: The application abstracts interactions with different Large Language Models (LLMs) through an `IApiService` interface. Concrete implementations exist for providers like Cerebras and Gemini. Streaming responses from LLMs are handled by `StreamingResponseService`.
-*   **Challenges**: A separate module for defining and running AI-driven coding challenges, allowing the agent to practice and demonstrate its capabilities.
-
-The `Program.cs` acts as the bootstrap, initializing core services, command, and tool registries, and then handing control to the `AgentService` for the main interaction loop.
+*   **Core Orchestration**: `Program.cs` serves as the application's entry point, initializing core services and the `AgentService`. The `AgentService` acts as the central orchestrator, managing the conversation flow, command processing, AI interactions, and tool execution.
+*   **Command Pattern**: Internal user commands (e.g., `/exit`, `/model`) are handled via a `CommandRegistry` and `ICommand` interface, allowing for easy addition of new commands.
+*   **Tool Pattern**: External actions that the AI can perform (e.g., `CREATE_FILE`, `LIST_FILES`) are implemented as `IToolAction` objects and managed by a `ToolRegistry`. The AI's responses are parsed to identify and execute these tools.
+*   **Service Layer**: The `Services` directory contains the business logic, including API communication (`ApiService`, `ApiServiceFactory`), console interactions (`ConsoleInterface`), file operations (`FileReferenceService`, `FileSearchService`), and context building (`ContextBuilder`).
+*   **State Management**: `CurrentState` provides a centralized, accessible location for global application state, such as conversation history, current AI model, and operational mode.
+*   **Dependency Injection**: Services and components are typically wired up in `Program.cs` using constructor injection, promoting loose coupling and testability.
+*   **AI Integration**: The system abstracts different AI providers through the `IApiService` interface, allowing for flexible switching between models (e.g., Cerebras, Gemini). Streaming responses are handled to provide a dynamic user experience.
 
 ## 4. Key Components
 
-*   **`Program.cs`**: The application's entry point. It handles initial setup, API key management, service registration (CommandRegistry, ToolRegistry, AgentService, etc.), and determines whether to run in interactive mode or as a subagent.
-*   **`Services/AgentService.cs`**: The central orchestrator of the AI assistant. It manages the conversation flow, processes user input, invokes commands, interacts with LLMs, and executes tools based on AI responses.
-*   **`Commands/Core/CommandRegistry.cs`**: Discovers and registers all available user commands (implementing `ICommand`). It's responsible for mapping user input to the correct command execution logic.
-*   **`Tools/Core/ToolRegistry.cs`**: Discovers and registers all available tools (implementing `IToolAction`). It provides a mechanism for the `AgentService` to invoke specific system actions requested by the AI.
-*   **`Services/ApiServiceFactory.cs` & `Services/*ApiService.cs`**: Handles the creation and management of API service instances for different LLM providers (e.g., Cerebras, Gemini). It abstracts the underlying API calls.
-*   **`Services/StreamingResponseService.cs`**: Manages the processing of streaming responses from LLMs, handling partial data and displaying it to the console.
-*   **`Services/ConversationState.cs`**: Maintains the current state of the conversation, including the chat history, current working directory, and selected AI model.
-*   **`Services/Configuration/ConfigurationService.cs` & `Services/ApiKeyManager.cs`**: Manages application settings loaded from `AppSettings.json` (if implemented) and securely handles API keys.
-*   **`Challenges/Core/ChallengeRegistry.cs`**: Manages the discovery and execution of various coding challenges that the agent can attempt.
+*   **`AgentService.cs`**: The heart of the application. It manages the main interactive loop, processes user input (commands or natural language), builds message history for the AI, sends requests to the `ApiService`, and processes AI responses, including executing detected tools. It also handles subagent mode.
+*   **`ConsoleInterface.cs`**: Responsible for all console-based input and output. It provides methods for displaying welcome messages, user prompts, information, errors, and tool results. It also manages user input, including mode switching.
+*   **`CommandRegistry` (and `Commands/` directory)**: Manages a collection of `ICommand` implementations. Commands are internal actions triggered by user input starting with `/`.
+*   **`ToolRegistry` (and `Tools/` directory)**: Manages a collection of `IToolAction` implementations. Tools are external actions that the AI can instruct the agent to perform (e.g., file system operations, running commands).
+*   **`ApiService.cs` (and implementations like `GeminiApiService.cs`, `CerebrasApiService.cs`)**: Defines the interface for interacting with various AI models. Implementations handle specific API calls, request/response formats, and streaming.
+*   **`CurrentState.cs`**: A static class holding the mutable state of the application, including the conversation history (`Messages`), current AI provider and model, and the agent's operational mode.
+*   **`FileReferenceService.cs`**: Scans user input for file references (e.g., `[FILE:path/to/file.cs]`), reads their content, and injects them into the AI's system message for context.
+*   **`ContextBuilder.cs`**: Dynamically builds the initial system messages provided to the AI, including project context, available tools, and current operational mode.
 
 ## 5. Dependencies
 
-The project relies on the following external NuGet packages:
+The project relies on the following key external NuGet packages:
 
-*   **`Newtonsoft.Json` (Version 13.0.3)**: A popular high-performance JSON framework for .NET. Used for serializing and deserializing data, especially for communication with LLM APIs and managing configuration.
-*   **`GitignoreParserNet` (Version 0.2.0.14)**: A utility for parsing `.gitignore` files. Likely used by tools to determine which files should be ignored during operations like searching or context building.
-*   **`TextDiff.Sharp` (Version 1.0.3)**: A library for generating unified diffs between text. Used by the `UpdateFileAction` tool to apply patch-like changes to files.
+*   **`GitignoreParserNet`**: Used for parsing `.gitignore` files, likely to exclude certain files/directories from file search or context building operations.
+*   **`Newtonsoft.Json`**: A popular high-performance JSON framework for .NET, used for serializing and deserializing data, especially for API requests and responses.
+*   **`Spectre.Console`**: Provides a rich library for creating beautiful console applications, used extensively for enhanced user interface elements, styling, and interactive prompts.
+*   **`TextDiff.Sharp`**: A library for generating and applying text differences (diffs), likely used by the `UpdateFileAction` tool to apply patch-like changes to files.
 
 ## 6. Development Guidelines
 
-*   **Language**: C# 12, .NET 8.0.
-*   **Coding Standards**: Adhere to standard C# coding conventions and best practices (e.g., PascalCase for types and members, camelCase for local variables, meaningful names, use of `async`/`await` for asynchronous operations).
-*   **Modularity**: Keep components loosely coupled and highly cohesive. New features should ideally fit into existing service, command, or tool patterns.
-*   **Error Handling**: Implement robust error handling, especially for external API calls and file system operations.
-*   **Console Output**: Use `ConsoleInterface` for all console interactions to maintain consistency and allow for potential future abstraction.
-*   **Configuration**: All configurable parameters should be managed through `ConfigurationService` or `ApiKeyManager`, avoiding hardcoded values.
+The project adheres to strict coding practices documented in `CODING_PRACTICES.md`. Key principles include:
+
+*   **Simplicity and Directness**: Write clear, concise code.
+*   **Early Returns/Guard Clauses**: Reduce nesting and improve readability.
+*   **No Emojis, No Decorations**: Maintain a professional and clean code/message style.
+*   **Comments**: Use `//` comments only, explaining *why* something is done, not *what*.
+*   **Code Organization**: One statement per line, minimal nesting, logical grouping of files.
+*   **Error Handling**: Simple, direct error messages; fail-fast approach.
+*   **Async Patterns**: Use `ConfigureAwait(false)` in libraries, support `CancellationToken`.
+*   **Naming**: Clear, descriptive names; boolean names as questions (e.g., `IsValid`).
+*   **Dependencies**: Constructor injection only, minimal dependencies.
+*   **File Structure**: Logical grouping, one class per file (matching file name).
+*   **Performance**: Optimize only when necessary, use appropriate data structures.
+*   **Security**: Validate all inputs, never log secrets.
+*   **Testing**: Test names describe behavior, follow Arrange-Act-Assert pattern.
+*   **Console Output**: Consistent, minimal output; use colors for status/errors.
+*   **Tool/Command Patterns**: Follow the defined patterns for implementing new tools and commands.
+
+Refer to `CODING_PRACTICES.md` for detailed examples and further guidelines.
 
 ## 7. Build and Test
 
 The project uses the standard .NET CLI for building and running.
 
-*   **Build**:
-    ```bash
-    dotnet build
-    ```
-*   **Run**:
-    ```bash
-    dotnet run
-    ```
-    To run as a subagent with a specific prompt:
-    ```bash
-    dotnet run -- --subagent "your subagent prompt here"
-    ```
-    To specify an API key on startup:
-    ```bash
-    dotnet run -- --api-key=YOUR_API_KEY
-    ```
-*   **Test**: (Currently, no dedicated test project is present. If tests were added, they would be run with):
-    ```bash
-    dotnet test
-    ```
+*   **Build**: To build the project, navigate to the project root directory (`duo-code/`) and run:
+    `dotnet build`
+*   **Run**: To run the application in interactive mode:
+    `dotnet run`
+    To run in subagent mode with a specific prompt:
+    `dotnet run -- --subagent "Your prompt here"`
+*   **Test**: (Assuming unit tests exist, though not explicitly listed in initial directory analysis) To run tests:
+    `dotnet test`
 
 ## 8. Common Tasks
 
-*   **Starting the Agent**: Run `dotnet run` from the project root.
-*   **Setting API Key**: The agent will prompt for an API key on first run if not provided via command line. The key is saved locally.
-*   **Changing AI Model/Provider**: Use the `model` command within the agent's console (e.g., `model cerebras-7b` or `model gemini-pro`).
-*   **Getting Help**: Type `help` in the agent's console to see available commands.
-*   **Exiting**: Type `exit` or `quit` in the agent's console.
-*   **Clearing Console**: Type `clear` in the agent's console.
+*   **Start Interactive Session**:
+    `dotnet run`
+*   **Run as Subagent**:
+    `dotnet run -- --subagent "Refactor the 'Utils/ArgumentParser.cs' file to improve readability."`
+*   **Switch AI Model**: In interactive mode, type `/model <model_name>` (e.g., `/model gemini-pro`).
+*   **Exit Application**: In interactive mode, type `/exit`.
+*   **Clear Conversation History**: In interactive mode, type `/clear`.
+*   **Get Help**: In interactive mode, type `/help`.
+*   **Reference Files in Prompt**: Use the `[FILE:path/to/file.cs]` syntax in your user input to include file content in the AI's context.
 
 ## 9. Known Issues
 
-*   **Hardcoded Directory**: In `Program.cs`, there is a temporary hardcoded `Directory.SetCurrentDirectory` line (around line 31). This should be removed before release to allow the application to run from its execution directory or a user-specified directory.
-*   **No Unit Tests**: As of this documentation, there is no dedicated unit test project. Adding comprehensive tests is recommended for future development.
-*   **Limited Error Reporting**: While basic error handling is present, more detailed logging and user-friendly error messages could be implemented for a better experience.
+*   **Current Directory Hardcoding**: In `Program.cs`, the current directory is hardcoded (Line 17: `Directory.SetCurrentDirectory("C:\\Work\\Efectiv Duo\\projects\\duo-code\\");`). This should be made dynamic or configurable for better portability.
+*   **Tool Execution Error Handling**: While tools have `try-catch` blocks, the overall error handling for tool execution might need more robust mechanisms to prevent agent loops or provide more actionable feedback to the AI.
+*   **Context Window Management**: For very long conversations or large file references, the AI's context window might become a limitation. Strategies for summarization or intelligent context pruning may be needed.
+*   **User Input Cancellation**: The `_console.WaitForContinueOrCancel()` is currently commented out in `AgentService.cs` (lines 241-248), meaning the agent proceeds without explicit user confirmation after tool execution. This might be desired behavior but note the change.
