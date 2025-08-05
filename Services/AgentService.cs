@@ -136,8 +136,6 @@ namespace duo_code.Services
             {
                 var messageHistory = BuildMessageHistory();
 
-                _logger.SaveConversation(messageHistory);
-
                 using var cts = new CancellationTokenSource();
                 _console.SetupCancellation(cts);
 
@@ -147,15 +145,17 @@ namespace duo_code.Services
                     RefreshApiServiceIfNeeded();
                     
                     // Convert to CerebrasMessage format
-                    var cerebrasMessages = messageHistory.Select(m => new CerebrasMessage
+                    var messages = messageHistory.Select(m => new CerebrasMessage
                     {
                         Role = m.Role ?? "user",
                         Content = m.Content
                     }).ToList();
 
+                    _logger.SaveConversation(messages.Select(m => $"{m.Role.ToUpper()}:\n{m.Content}\n\n").Aggregate((a, b) => $"{a}\n{b}"));
+
                     WriteInfo("Sent API request.");
 
-                    var processedResponse = await _apiService.GetAISuggestionAsync(cerebrasMessages, cts.Token, CurrentState.Model, _console);
+                    var processedResponse = await _apiService.GetAISuggestionAsync(messages, cts.Token, CurrentState.Model, _console);
 
                     if (!string.IsNullOrWhiteSpace(processedResponse?.Content))
                     {
@@ -163,6 +163,8 @@ namespace duo_code.Services
 
                         taskCompleted = await ProcessAssistantResponseAsync(processedResponse);
                     }
+
+                    _logger.SaveConversation(messages.Select(m => $"{m.Role.ToUpper()}:\n{m.Content}\n\n").Aggregate((a, b) => $"{a}\n{b}"));
                 }
                 catch (OperationCanceledException)
                 {
@@ -233,9 +235,6 @@ namespace duo_code.Services
 
                     finishTaskFound = true;
                 }
-                
-                // Save conversation after each assistant response
-                _logger.SaveConversation(CurrentState.Messages);
                 
                 // Wait for user input before continuing (unless task is finished)
                 //if (!finishTaskFound)

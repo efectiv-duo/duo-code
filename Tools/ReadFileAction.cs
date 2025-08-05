@@ -1,4 +1,5 @@
 using duo_code.Tools.Core;
+using duo_code.Utils;
 
 namespace duo_code.Tools;
 
@@ -19,7 +20,8 @@ READ_FILE: file_path lines:start+count purpose:read_purpose";
     private const long MaxFileSize = 10 * 1024 * 1024;
 
     // Known binary file extensions
-    private static readonly string[] BinaryExtensions = {
+    private static readonly HashSet<string> BinaryExtensions = new()
+    {
         ".exe", ".dll", ".so", ".a", ".o", ".zip", ".rar", ".7z", ".tar", ".gz",
         ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".pdf", ".doc", ".docx", ".xls", ".xlsx",
         ".ppt", ".pptx", ".iso", ".img", ".bin", ".mp3", ".mp4", ".avi", ".mov", ".wav"
@@ -27,54 +29,38 @@ READ_FILE: file_path lines:start+count purpose:read_purpose";
 
     protected override string ExecuteCore(string baseDirectory)
     {
+        if (string.IsNullOrWhiteSpace(Path))
+            return "Error: File path cannot be empty";
+            
         var fullPath = ResolvePath(baseDirectory, Path);
+        
         if (!File.Exists(fullPath))
             return $"Error: File not found: {Path}";
 
-        // Check for binary file extension
         var extension = System.IO.Path.GetExtension(fullPath).ToLowerInvariant();
         if (BinaryExtensions.Contains(extension))
-        {
             return $"Error: Cannot read binary file type ('{extension}'). The READ_FILE tool is for text-based files.";
-        }
 
-        // Check file size
         var fileInfo = new FileInfo(fullPath);
         if (fileInfo.Length > MaxFileSize)
-        {
             return $"Error: File '{Path}' is too large ({fileInfo.Length / 1024 / 1024} MB). Maximum allowed size is {MaxFileSize / 1024 / 1024} MB.";
-        }
 
-        try
-        {
-            // Parse line range if provided
-            if (!string.IsNullOrEmpty(LineRange))
-            {
-                return ReadFileWithLineRange(fullPath, LineRange);
-            }
+        var result = new System.Text.StringBuilder();
+        result.AppendLine($"Executed READ_FILE: {Path} {(string.IsNullOrEmpty(Purpose) ? "" : $" (Purpose: {Purpose})")}");
 
-            // Read entire file with line numbers
-            var lines = File.ReadAllLines(fullPath);
-            var result = new System.Text.StringBuilder();
-            result.AppendLine($"Executed READ_FILE: {Path} {(string.IsNullOrEmpty(Purpose) ? "" : $" (Purpose: {Purpose})")}");
-
-            for (int i = 0; i < lines.Length; i++)
-            {
-                result.AppendLine($"{i + 1}:{lines[i]}");
-            }
-
-            ConsoleMessage = $"Read {lines.Length} lines from {Path}";
-
-            return result.ToString();
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return $"Error: Access denied to file: {Path}";
-        }
-        catch (IOException ex)
-        {
-            return $"Error reading file: {ex.Message}";
-        }
+        var (startLine, endLine) = string.IsNullOrEmpty(LineRange) 
+            ? (1, -1) 
+            : ParseLineRange(LineRange);
+            
+        var (content, lineCount) = FileContentReader.ReadFileContent(fullPath, startLine, endLine);
+        
+        if (content.StartsWith("Error:"))
+            return content;
+            
+        result.Append(content);
+        ConsoleMessage = $"Read {lineCount} lines from {Path}";
+        
+        return result.ToString();
     }
 
     protected override string? CreateSummary(string fullResult)
@@ -103,69 +89,39 @@ READ_FILE: file_path lines:start+count purpose:read_purpose";
         return GetTruncatedContent(fullResult);
     }
 
-    private string ReadFileWithLineRange(string filePath, string lineRange)
+
+    private (int startLine, int endLine) ParseLineRange(string lineRange)
     {
-        try
-        {
-            var lines = File.ReadAllLines(filePath);
-            var (startLine, endLine) = ParseLineRange(lineRange, lines.Length);
-
-            if (startLine < 1 || startLine > lines.Length)
-            {
-                return $"Error: Start line {startLine} is out of range (1-{lines.Length})";
-            }
-
-            endLine = Math.Min(endLine, lines.Length);
-            var selectedLines = lines.Skip(startLine - 1).Take(endLine - startLine + 1);
-
-            var result = new System.Text.StringBuilder();
-            result.AppendLine($"Executed READ_FILE: {Path} lines:{startLine}-{endLine}");
-
-            int currentLine = startLine;
-            foreach (var line in selectedLines)
-            {
-                result.AppendLine($"{currentLine,4}: {line}");
-                currentLine++;
-            }
-
-            ConsoleMessage = $"Read {selectedLines.Count()} lines from {Path}";
-
-            return result.ToString();
-        }
-        catch (Exception ex)
-        {
-            return $"Error reading file with line range: {ex.Message}";
-        }
-    }
-
-    private (int startLine, int endLine) ParseLineRange(string lineRange, int totalLines)
-    {
+        if (string.IsNullOrWhiteSpace(lineRange))
+            return (1, -1);
+            
         if (lineRange.Contains('-'))
         {
-            // Format: start-end
-            var parts = lineRange.Split('-');
-            if (parts.Length == 2 && int.TryParse(parts[0], out int start) && int.TryParse(parts[1], out int end))
+            var parts = lineRange.Split('-', 2);
+            if (parts.Length == 2 && 
+                int.TryParse(parts[0].Trim(), out int start) && 
+                int.TryParse(parts[1].Trim(), out int end))
             {
                 return (start, end);
             }
         }
         else if (lineRange.Contains('+'))
         {
-            // Format: start+count
-            var parts = lineRange.Split('+');
-            if (parts.Length == 2 && int.TryParse(parts[0], out int start) && int.TryParse(parts[1], out int count))
+            var parts = lineRange.Split('+', 2);
+            if (parts.Length == 2 && 
+                int.TryParse(parts[0].Trim(), out int start) && 
+                int.TryParse(parts[1].Trim(), out int count) && 
+                count > 0)
             {
                 return (start, start + count - 1);
             }
         }
-        else if (int.TryParse(lineRange, out int singleLine))
+        else if (int.TryParse(lineRange.Trim(), out int singleLine))
         {
-            // Single line number
             return (singleLine, singleLine);
         }
 
-        // Default to entire file if parsing fails
-        return (1, totalLines);
+        return (1, -1);
     }
 
     private string GetTruncatedContent(string content)

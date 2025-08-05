@@ -1,5 +1,6 @@
 using TextDiff;
 using duo_code.Tools.Core;
+using duo_code.Utils;
 using System.Text;
 
 namespace duo_code.Tools;
@@ -22,79 +23,87 @@ Line 2
 
     protected override string ExecuteCore(string baseDirectory)
     {
-        var fullPath = ResolvePath(baseDirectory, Path);
-        if (!File.Exists(fullPath))
-        {
-            return $"Error: File not found: {Path}";
-        }
-
+        if (string.IsNullOrWhiteSpace(Path))
+            return "Error: File path cannot be empty";
+            
         if (string.IsNullOrWhiteSpace(Content))
-        {
-            return "Error: Diff content cannot be empty.";
-        }
+            return "Error: Diff content cannot be empty";
+            
+        var fullPath = ResolvePath(baseDirectory, Path);
+        
+        if (!File.Exists(fullPath))
+            return $"Error: File not found: {Path}";
 
         try
         {
-            // Remove lines starting with \ (like "\ No newline at end of file")
             var cleanedContent = string.Join('\n', 
                 Content.Split('\n')
                     .Where(line => !line.StartsWith("\\")));
             
-            // 1. Read the original content from the file.
             var originalContent = File.ReadAllText(fullPath);
-
-            // 2. Create a TextDiffer instance
             var textDiffer = new TextDiffer();
-
-            // 3. Process the diff
             var result = textDiffer.Process(originalContent, cleanedContent);
-
-            // 4. Write the updated content back to the file
+            
             File.WriteAllText(fullPath, result.Text);
 
-            // Count the number of changes (lines starting with + or -)
             var diffLines = cleanedContent.Split('\n');
             var changeCount = diffLines.Count(line => 
                 line.StartsWith("+") || line.StartsWith("-"));
             
-            // Build formatted console message with colored diff
-            var consoleOutput = new StringBuilder();
-            consoleOutput.AppendLine($"Applied {changeCount} change{(changeCount != 1 ? "s" : "")} to {Path}");
-
-            foreach (var line in diffLines)
-            {
-                if (string.IsNullOrWhiteSpace(line)) continue;
-                
-                // Ensure the line is properly escaped before applying markup
-                var escapedLine = EscapeMarkup(line);
-                
-                if (line.StartsWith("@@"))
-                {
-                    consoleOutput.AppendLine($"[blue]{escapedLine}[/]");
-                }
-                else if (line.StartsWith("+"))
-                {
-                    consoleOutput.AppendLine($"[green]{escapedLine}[/]");
-                }
-                else if (line.StartsWith("-"))
-                {
-                    consoleOutput.AppendLine($"[red]{escapedLine}[/]");
-                }
-                else if (!line.StartsWith("UPDATE_FILE:"))
-                {
-                    consoleOutput.AppendLine($"[dim]{escapedLine}[/]");
-                }
-            }
+            BuildConsoleMessage(diffLines, changeCount);
             
-            ConsoleMessage = consoleOutput.ToString().TrimEnd();
-
-            return $"Successfully applied {changeCount} change{(changeCount != 1 ? "s" : "")} to: {Path}";
+            return BuildResponse(fullPath, changeCount);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return $"Error: Access denied to file: {Path}";
+        }
+        catch (IOException ex)
+        {
+            return $"Error: IO error applying diff: {ex.Message}";
         }
         catch (Exception ex)
         {
-            // Catch potential errors from the library or file system.
-            return $"Error applying diff: {EscapeMarkup(ex.Message)}";
+            return $"Error applying diff: {ex.Message}";
         }
+    }
+    
+    private void BuildConsoleMessage(string[] diffLines, int changeCount)
+    {
+        var consoleOutput = new StringBuilder();
+        consoleOutput.AppendLine($"Applied {changeCount} change{(changeCount != 1 ? "s" : "")} to {Path}");
+
+        foreach (var line in diffLines)
+        {
+            if (string.IsNullOrWhiteSpace(line)) 
+                continue;
+                
+            var escapedLine = EscapeMarkup(line);
+            
+            if (line.StartsWith("@@"))
+                consoleOutput.AppendLine($"[blue]{escapedLine}[/]");
+            else if (line.StartsWith("+"))
+                consoleOutput.AppendLine($"[green]{escapedLine}[/]");
+            else if (line.StartsWith("-"))
+                consoleOutput.AppendLine($"[red]{escapedLine}[/]");
+            else if (!line.StartsWith("UPDATE_FILE:"))
+                consoleOutput.AppendLine($"[dim]{escapedLine}[/]");
+        }
+        
+        ConsoleMessage = consoleOutput.ToString().TrimEnd();
+    }
+    
+    private string BuildResponse(string fullPath, int changeCount)
+    {
+        var response = new StringBuilder();
+        response.AppendLine($"Successfully applied {changeCount} change{(changeCount != 1 ? "s" : "")} to: {Path}");
+        response.AppendLine();
+        
+        var (content, lineCount) = FileContentReader.ReadFileContent(fullPath);
+        response.AppendLine($"Full file result ({lineCount} lines):");
+        response.Append(content);
+
+        return response.ToString();
     }
 
     public override string ToString()
