@@ -28,6 +28,7 @@ public static class StreamingResponseProcessor
         {
             ApiProvider.Gemini => await ProcessGeminiStreamAsync(httpResponse, cancellationToken, console),
             ApiProvider.Cerebras => await ProcessCerebrasStreamAsync(httpResponse, cancellationToken, console),
+             ApiProvider.Anthropic => await ProcessAnthropicStreamAsync(httpResponse, cancellationToken, console),
             _ => await ProcessCerebrasStreamAsync(httpResponse, cancellationToken, console) // Default to Cerebras
         };
     }
@@ -144,6 +145,66 @@ public static class StreamingResponseProcessor
         return FinalizeResponse(responseBuilder, thinkingBuilder, currentThinkingBuilder, buffer, inThinkBlock, cancellationToken, console);
     }
 
+    private static async Task<ProcessedResponse> ProcessAnthropicStreamAsync(HttpResponseMessage httpResponse, CancellationToken cancellationToken, ConsoleInterface? console)
+    {
+        var responseBuilder = new StringBuilder();
+        var thinkingBuilder = new StringBuilder();
+        var buffer = new StringBuilder();
+        var currentThinkingBuilder = new StringBuilder();
+        bool inThinkBlock = false;
+
+        var stream = await httpResponse.Content.ReadAsStreamAsync();
+        using var reader = new StreamReader(stream);
+
+        while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
+        {
+            var line = await reader.ReadLineAsync();
+            if (line == null) continue;
+
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (line.StartsWith("data: "))
+            {
+                var jsonData = line.Substring(6); 
+
+                if (jsonData == "[DONE]") break;
+
+                try
+                {
+                    using var doc = JsonDocument.Parse(jsonData);
+                    var root = doc.RootElement;
+
+                    // Handle different event types from Anthropic
+                    if (root.TryGetProperty("type", out var typeElement))
+                    {
+                        var eventType = typeElement.GetString();
+
+                        if (eventType == "content_block_delta")
+                        {
+                            if (root.TryGetProperty("delta", out var delta) &&
+                                delta.TryGetProperty("text", out var textElement))
+                            {
+                                var contentChunk = textElement.GetString();
+                                if (!string.IsNullOrEmpty(contentChunk))
+                                {
+                                    buffer.Append(contentChunk);
+                                    ProcessContentBuffer(buffer, responseBuilder, thinkingBuilder, currentThinkingBuilder, ref inThinkBlock, console);
+                                }
+                            }
+                        }
+                        // Ignore other event types like message_start, content_block_start, etc.
+                    }
+                }
+                catch (JsonException)
+                {
+                    continue;
+                }
+            }
+        }
+
+        return FinalizeResponse(responseBuilder, thinkingBuilder, currentThinkingBuilder, buffer, inThinkBlock, cancellationToken, console);
+    }
+
     private static void ProcessContentBuffer(StringBuilder buffer, StringBuilder responseBuilder, StringBuilder thinkingBuilder, StringBuilder currentThinkingBuilder, ref bool inThinkBlock, ConsoleInterface? console)
     {
         while (true) // Process the buffer repeatedly until no more tags can be found
@@ -155,11 +216,11 @@ public static class StreamingResponseProcessor
                 {
                     // Capture the thinking content
                     currentThinkingBuilder.Append(buffer.ToString(0, endTagIndex));
-                    
+
                     // Add to thinking collection
                     if (thinkingBuilder.Length > 0) thinkingBuilder.AppendLine();
                     thinkingBuilder.Append(currentThinkingBuilder.ToString());
-                    
+
                     ShowDoneMessage(console);
                     buffer.Remove(0, endTagIndex + "</think>".Length);
                     currentThinkingBuilder.Clear();
