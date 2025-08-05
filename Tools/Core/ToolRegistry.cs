@@ -79,8 +79,8 @@ namespace duo_code.Tools.Core
             var defaultTools = new HashSet<string>
             {
                 "LIST_FILES", "FIND", "SEARCH", "READ_FILE", "GIT_SUMMARY", "CREATE_FILE", "UPDATE_FILE",
-                "DELETE_FILE", "CREATE_DIRECTORY", "DELETE_DIRECTORY", "RENAME_FILE",
-                "RUN_COMMAND", "FINISH_TASK", "NOTES"
+                "DELETE_FILE", "CREATE_DIR", "DELETE_DIR", "RENAME_FILE",
+                "RUN_COMMAND", "FINISH_TASK"
             };
             return defaultTools.Contains(toolName);
         }

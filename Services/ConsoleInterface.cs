@@ -42,7 +42,8 @@ namespace duo_code.Services
             AnsiConsole.Write(panel);
             
             var logger = new ConversationLogger();
-            Console.WriteLine($"Conversation logs saved to: {logger.GetLogsDirectory()}");
+            WriteInfo($"Conversation logs saved to: {logger.GetLogsDirectory()}");
+            WriteInfo($"Current working directory: {Directory.GetCurrentDirectory()}");
             AnsiConsole.WriteLine();
         }
 
@@ -56,9 +57,17 @@ namespace duo_code.Services
         
         public async Task<(string input, Mode? modeSwitch)> GetUserInputAsync(Mode currentMode)
         {
-            LoadCommandHistory();
+            // Simple console read implementation
+            ShowPrompt(currentMode);
+            var input = await Task.Run(() => Console.ReadLine() ?? string.Empty);
             
-            return await Task.Run(() => GetUserInputWithCustomHandling(currentMode));
+            // Add to history if not empty
+            if (!string.IsNullOrWhiteSpace(input))
+            {
+                AddToHistory(input);
+            }
+            
+            return (input, null);
         }
         
         private (string input, Mode? modeSwitch) GetUserInputWithCustomHandling(Mode currentMode)
@@ -328,6 +337,15 @@ namespace duo_code.Services
                 Mode.Orchestrator => Mode.Default,
                 _ => Mode.Default
             };
+        }
+        
+        private void ShowPrompt(Mode currentMode)
+        {
+            var promptText = currentMode switch
+            {
+                _ => "[magenta]>[/] "
+            };
+            AnsiConsole.Markup(promptText);
         }
 
         public void ShowError(string error)

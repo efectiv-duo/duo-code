@@ -1,5 +1,6 @@
 using TextDiff;
 using duo_code.Tools.Core;
+using System.Text;
 
 namespace duo_code.Tools;
 
@@ -34,6 +35,11 @@ Line 2
 
         try
         {
+            // Remove lines starting with \ (like "\ No newline at end of file")
+            var cleanedContent = string.Join('\n', 
+                Content.Split('\n')
+                    .Where(line => !line.StartsWith("\\")));
+            
             // 1. Read the original content from the file.
             var originalContent = File.ReadAllText(fullPath);
 
@@ -41,26 +47,69 @@ Line 2
             var textDiffer = new TextDiffer();
 
             // 3. Process the diff
-            var result = textDiffer.Process(originalContent, Content);
+            var result = textDiffer.Process(originalContent, cleanedContent);
 
             // 4. Write the updated content back to the file
             File.WriteAllText(fullPath, result.Text);
 
             // Count the number of changes (lines starting with + or -)
-            var changeCount = Content.Split('\n').Count(line => 
+            var diffLines = cleanedContent.Split('\n');
+            var changeCount = diffLines.Count(line => 
                 line.StartsWith("+") || line.StartsWith("-"));
             
+            // Build formatted console message with colored diff
+            var consoleOutput = new StringBuilder();
+            consoleOutput.AppendLine($"Applied {changeCount} change{(changeCount != 1 ? "s" : "")} to {Path}");
+
+            foreach (var line in diffLines)
+            {
+                if (string.IsNullOrWhiteSpace(line)) continue;
+                
+                // Ensure the line is properly escaped before applying markup
+                var escapedLine = EscapeMarkup(line);
+                
+                if (line.StartsWith("@@"))
+                {
+                    consoleOutput.AppendLine($"[blue]{escapedLine}[/]");
+                }
+                else if (line.StartsWith("+"))
+                {
+                    consoleOutput.AppendLine($"[green]{escapedLine}[/]");
+                }
+                else if (line.StartsWith("-"))
+                {
+                    consoleOutput.AppendLine($"[red]{escapedLine}[/]");
+                }
+                else if (!line.StartsWith("UPDATE_FILE:"))
+                {
+                    consoleOutput.AppendLine($"[dim]{escapedLine}[/]");
+                }
+            }
+            
+            ConsoleMessage = consoleOutput.ToString().TrimEnd();
+
             return $"Successfully applied {changeCount} change{(changeCount != 1 ? "s" : "")} to: {Path}";
         }
         catch (Exception ex)
         {
             // Catch potential errors from the library or file system.
-            return $"Error applying diff: {ex.Message}";
+            return $"Error applying diff: {EscapeMarkup(ex.Message)}";
         }
     }
 
     public override string ToString()
     {
         return $"{ToolName}: {Path}";
+    }
+    
+    private static string EscapeMarkup(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+            return text;
+            
+        // Escape special markup characters
+        return text
+            .Replace("[", "[[")
+            .Replace("]", "]]");
     }
 }

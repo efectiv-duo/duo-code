@@ -65,10 +65,7 @@ namespace duo_code.Services
                     }
                     else
                     {
-                        await ShowProgressAsync("Agent is running (esc to interrupt)", async () =>
-                        {
-                            await ProcessUserMessageAsync(input);
-                        });
+                        await ProcessUserMessageAsync(input);
                     }
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -202,16 +199,17 @@ namespace duo_code.Services
 
                     try
                     {
-                        var result = tool.Execute(Directory.GetCurrentDirectory());
-                        WriteToolResult(result);
-                        tool.FullResult = result;
+                        tool.Execute(Directory.GetCurrentDirectory());
+
+                        WriteToolResult(tool.ConsoleMessage ?? "no message");
+                        
                         message.Actions.Add(tool);
                     }
                     catch (Exception ex)
                     {
                         var errorResult = $"Error: {ex.Message}";
                         _console.ShowError(errorResult);
-                        tool.FullResult = errorResult;
+                        tool.ResultMessage = errorResult;
                         message.Actions.Add(tool);
                     }
                 }

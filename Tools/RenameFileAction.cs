@@ -18,7 +18,7 @@ RENAME_FILE: old_path > new_path";
         var fullNewPath = ResolvePath(baseDirectory, NewPath);
         if (!File.Exists(fullOldPath)) throw new FileNotFoundException($"Source file not found: {OldPath}");
         File.Move(fullOldPath, fullNewPath);
-        return $"Successfully renamed {OldPath} to {NewPath}";
+        return $"Renamed {OldPath} to {NewPath}";
     }
     
     public override string ToString()

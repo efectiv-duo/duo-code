@@ -31,7 +31,7 @@ public class Message
             return Content;
 
         var results = Actions
-            .Where(action => action.FullResult != null)
+            .Where(action => action.ResultMessage != null)
             .Select(action => FormatToolResult(action, forSummary));
 
         return string.Join("\n\n", results);
@@ -41,7 +41,7 @@ public class Message
     {
         var resultText = forSummary && action.SummarizedResult != null 
             ? action.SummarizedResult 
-            : action.FullResult;
+            : action.ResultMessage;
             
         return $"{resultText}";
     }

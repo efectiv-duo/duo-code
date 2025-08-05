@@ -63,6 +63,8 @@ READ_FILE: file_path lines:start+count purpose:read_purpose";
                 result.AppendLine($"{i + 1}:{lines[i]}");
             }
 
+            ConsoleMessage = $"Read {lines.Length} lines from {Path}";
+
             return result.ToString();
         }
         catch (UnauthorizedAccessException)
@@ -125,6 +127,8 @@ READ_FILE: file_path lines:start+count purpose:read_purpose";
                 result.AppendLine($"{currentLine,4}: {line}");
                 currentLine++;
             }
+
+            ConsoleMessage = $"Read {selectedLines.Count()} lines from {Path}";
 
             return result.ToString();
         }

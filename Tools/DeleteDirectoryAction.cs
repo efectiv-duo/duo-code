@@ -18,7 +18,7 @@ DELETE_DIR: directory_path";
         {
             // The 'true' recursively deletes all contents.
             Directory.Delete(fullPath, true);
-            return $"Successfully deleted directory and its contents: {Path}";
+            return $"Successfully deleted dir and it's contents: {Path}";
         }
         else
         {

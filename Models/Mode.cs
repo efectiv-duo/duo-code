@@ -40,7 +40,7 @@ namespace duo_code.Models
             builder.AppendLine(@"You are an agent.");
             builder.AppendLine(@"Use the FINISH_TASK tool when you have completed all your tasks.");
             builder.AppendLine();
-            builder.AppendLine("## Core Loop");
+            builder.AppendLine("## Core Thinking Loop");
             builder.AppendLine();
             builder.AppendLine("**observe** → **orient** → **decide** → **act** → **test** → **document**");
             builder.AppendLine();
@@ -67,7 +67,6 @@ namespace duo_code.Models
             builder.AppendLine("- I will run multiple tools in one turn, but only if they don't depend on each other's output.");
             builder.AppendLine("- I do not use markdown formatting in my responses.");
             builder.AppendLine("- Path should always start from current directory (.)");
-            builder.AppendLine("- Tools RUN");
 
             return builder.ToString();
         }

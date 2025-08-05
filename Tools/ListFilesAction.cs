@@ -39,7 +39,9 @@ LIST_FILES: path depth:N";
         var dirCount = allItems.Count(i => i.EndsWith("/"));
         var fileCount = allItems.Count - dirCount;
         output.AppendLine($"\nTotal: {dirCount} dirs, {fileCount} files");
-        
+
+        ConsoleMessage = $"Listed {dirCount} dirs, {fileCount} files";
+
         return output.ToString();
     }
     

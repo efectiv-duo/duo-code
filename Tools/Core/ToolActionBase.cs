@@ -8,7 +8,8 @@ public abstract class ToolActionBase : IToolAction
     public abstract string Description { get; }
     
     // Tool result storage
-    public string? FullResult { get; set; }
+    public string? ResultMessage { get; set; }
+    public string? ConsoleMessage { get; set; }
     public string? SummarizedResult { get; set; }
     
     // Service for AI summarization (optional, set by factory if needed)
@@ -17,14 +18,15 @@ public abstract class ToolActionBase : IToolAction
     // Template method pattern - calls ExecuteCore and then handles summarization
     public string Execute(string baseDirectory)
     {
-        var result = ExecuteCore(baseDirectory);
-        FullResult = result;
-        
+        ResultMessage = ExecuteCore(baseDirectory);
+
         // Let each tool decide how to summarize
-        SummarizedResult = CreateSummary(result);
+        SummarizedResult = CreateSummary(ResultMessage);
+
+        // Set console message
+        ConsoleMessage = ConsoleMessage ?? ResultMessage;
         
-        // Always return the full result for immediate display
-        return result;
+        return ResultMessage;
     }
     
     // Subclasses implement the actual execution logic

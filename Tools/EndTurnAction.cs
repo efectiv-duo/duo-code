@@ -24,8 +24,10 @@ message_to_user";
             Console.WriteLine($"SUBAGENT_RESULT: {Message}");
             Environment.Exit(0);
         }
+
+        ConsoleMessage = Message;
         
-        return Message; // The message is the result for normal operation
+        return $"Successfully ended task with message: {Message}"; ; // The message is the result for normal operation
     }
 
     public override string ToString()
