@@ -145,26 +145,32 @@ public static class ToolFactory
         if (string.IsNullOrEmpty(args))
             return new ListFilesAction { Path = "." };
 
-        // Check if args contains depth parameter
         var parts = args.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+        
+        if (parts.Length == 0)
+            return new ListFilesAction { Path = "." };
 
-        if (parts.Length == 1)
+        var action = new ListFilesAction { Path = parts[0] };
+
+        // Parse additional parameters
+        for (int i = 1; i < parts.Length; i++)
         {
-            // Just a path, no depth
-            return new ListFilesAction { Path = parts[0] };
-        }
-        else if (parts.Length == 2 && parts[1].StartsWith("depth:"))
-        {
-            // Path and depth
-            var depthStr = parts[1].Substring("depth:".Length);
-            if (int.TryParse(depthStr, out int depth) && depth >= 1 && depth <= 5)
+            if (parts[i].StartsWith("depth:"))
             {
-                return new ListFilesAction { Path = parts[0], Depth = depth };
+                var depthStr = parts[i].Substring("depth:".Length);
+                if (int.TryParse(depthStr, out int depth) && depth >= 1 && depth <= 5)
+                {
+                    action.Depth = depth;
+                }
+            }
+            else if (parts[i].StartsWith("directories_only:"))
+            {
+                var dirOnlyStr = parts[i].Substring("directories_only:".Length).ToLowerInvariant();
+                action.DirectoriesOnly = dirOnlyStr == "true" || dirOnlyStr == "1" || dirOnlyStr == "yes";
             }
         }
 
-        // Default behavior if parsing fails
-        return new ListFilesAction { Path = args };
+        return action;
     }
 
     private static ReadFileAction ParseReadFileAction(string args)
