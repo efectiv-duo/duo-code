@@ -3,5 +3,6 @@
 public enum ApiProvider
 {
     Cerebras,
-    Gemini
+    Gemini,
+    Anthropic
 }

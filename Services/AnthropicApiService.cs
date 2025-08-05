@@ -4,6 +4,7 @@ using System.Net;
 using duo_code.Commands.Actions;
 using duo_code.Models;
 
+
 namespace duo_code.Services;
 
 public class AnthropicApiService : IApiService
@@ -17,6 +18,7 @@ public class AnthropicApiService : IApiService
         _httpClient.DefaultRequestHeaders.Clear();
         _httpClient.DefaultRequestHeaders.Add("x-api-key", apiKey);
         _httpClient.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
+        //_httpClient.DefaultRequestHeaders.Add("content-type", "application/json");
     }
 
     public async Task<ProcessedResponse> GetAISuggestionAsync(
@@ -43,30 +45,31 @@ public class AnthropicApiService : IApiService
         return await StreamingResponseProcessor.ProcessAsync(response, cancellationToken, ApiProvider.Anthropic, console);
     }
 
-    private object ConvertToAnthropicRequest(List<CerebrasMessage> messages, string model)
+    private AnthropicRequest ConvertToAnthropicRequest(List<CerebrasMessage> messages, string model)
     {
         var (anthropicMessages, systemMessage) = ConvertToAnthropicFormat(messages);
         
-        return new
+        return new AnthropicRequest
         {
-            model = model,
-            max_tokens = 8192,
-            temperature = 0.5,
-            stream = true,
-            messages = anthropicMessages,
-            system = systemMessage
+            Model = model,
+            MaxTokens = 8192,
+            Temperature = 0.5,
+            Stream = true,
+            Messages = anthropicMessages,
+            System = systemMessage
         };
     }
 
-    private (List<object> messages, string? systemMessage) ConvertToAnthropicFormat(List<CerebrasMessage> messages)
+    private (List<AnthropicMessage> messages, string? systemMessage) ConvertToAnthropicFormat(List<CerebrasMessage> messages)
     {
-        var anthropicMessages = new List<object>();
+        var anthropicMessages = new List<AnthropicMessage>();
         string? systemMessage = null;
 
         foreach (var message in messages)
         {
             if (message.Role == "system")
             {
+                // Anthropic handles system messages separately
                 if (string.IsNullOrEmpty(systemMessage))
                 {
                     systemMessage = message.Content;
@@ -78,25 +81,22 @@ public class AnthropicApiService : IApiService
             }
             else if (message.Role == "user" || message.Role == "assistant")
             {
-                anthropicMessages.Add(new
+                anthropicMessages.Add(new AnthropicMessage
                 {
-                    role = message.Role,
-                    content = message.Content
+                    Role = message.Role,
+                    Content = message.Content
                 });
             }
         }
 
-        if (anthropicMessages.Count > 0)
+        // Ensure conversation starts with user message
+        if (anthropicMessages.Count > 0 && anthropicMessages[0].Role != "user")
         {
-            var firstMessage = anthropicMessages[0] as dynamic;
-            if (firstMessage?.role != "user")
+            anthropicMessages.Insert(0, new AnthropicMessage
             {
-                anthropicMessages.Insert(0, new
-                {
-                    role = "user",
-                    content = "Please continue with the task."
-                });
-            }
+                Role = "user",
+                Content = "Please continue with the task."
+            });
         }
 
         return (anthropicMessages, systemMessage);
@@ -104,11 +104,13 @@ public class AnthropicApiService : IApiService
 
     private string GetAnthropicModel(string currentModel)
     {
+        // Use the model as-is if it's a valid Anthropic model
         if (CurrentState.AvailableModels[ApiProvider.Anthropic].Contains(currentModel))
         {
             return currentModel;
         }
         
+        // Fallback to default Anthropic model
         return "claude-3-5-sonnet-20241022";
     }
 
@@ -116,4 +118,5 @@ public class AnthropicApiService : IApiService
     {
         _httpClient?.Dispose();
     }
+   
 }
