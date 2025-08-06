@@ -72,7 +72,7 @@ public class Message
     {
         // For the most recent assistant message, include thinking
         // if (distanceToHead == 0 && Thinking.Length > 0)
-            return ContentWithThinking;
+            return Content;
 
         return TruncateContent(distanceToHead, historyTotalLength);
     }
