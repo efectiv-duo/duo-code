@@ -48,7 +48,7 @@ public static class ToolFactory
             int contentEndIndex = contentStartIndex;
 
             // For tools that need content, find where the next tool starts
-            if (toolType == "CREATE_FILE" || toolType == "UPDATE_FILE" || toolType == "FINISH_TASK" || toolType == "NOTES" || toolType == "SPAWN_SUBAGENT")
+            if (toolType == "CREATE_FILE" || toolType == "UPDATE_FILE" || toolType == "NOTES" || toolType == "SPAWN_SUBAGENT")
             {
                 // Find the next tool command or end of input
                 while (contentEndIndex < lines.Length)
@@ -96,10 +96,6 @@ public static class ToolFactory
                 case "RUN_COMMAND":
                     action = new RunCommandAction { Command = args, ConsoleRequestMessage = currentLine };
                     break;
-                case "FINISH_TASK":
-                    var message = string.Join(Environment.NewLine, lines.Skip(contentStartIndex).Take(contentEndIndex - contentStartIndex));
-                    action = new EndTurnAction { Message = message };
-                    break;
                 case "RENAME_FILE":
                     var paths = args.Split(new[] { '>' }, 2);
                     if (paths.Length != 2) throw new ArgumentException("Invalid RENAME_FILE format. Use 'old_path > new_path'");
@@ -122,7 +118,7 @@ public static class ToolFactory
             }
 
             // Move to the next potential tool
-            i = toolType == "CREATE_FILE" || toolType == "UPDATE_FILE" || toolType == "FINISH_TASK" || toolType == "NOTES" || toolType == "SPAWN_SUBAGENT"
+            i = toolType == "CREATE_FILE" || toolType == "UPDATE_FILE" || toolType == "NOTES" || toolType == "SPAWN_SUBAGENT"
                 ? contentEndIndex
                 : i + 1;
         }

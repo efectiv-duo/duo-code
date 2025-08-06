@@ -25,7 +25,6 @@ namespace duo_code.Tools.Core
             Register<DeleteDirectoryAction>();
             Register<RenameFileAction>();
             Register<RunCommandAction>();
-            Register<EndTurnAction>();
             Register<NotesAction>();
             Register<SpawnSubagentAction>();
         }
@@ -80,7 +79,7 @@ namespace duo_code.Tools.Core
             {
                 "LIST_FILES", "FIND", "SEARCH", "READ_FILE", "GIT_SUMMARY", "CREATE_FILE", "UPDATE_FILE",
                 "DELETE_FILE", "CREATE_DIR", "DELETE_DIR", "RENAME_FILE",
-                "RUN_COMMAND", "FINISH_TASK"
+                "RUN_COMMAND"
             };
             return defaultTools.Contains(toolName);
         }
@@ -90,7 +89,7 @@ namespace duo_code.Tools.Core
             // Planning mode has access to read-only tools and planning tools
             var planningTools = new HashSet<string>
             {
-                "LIST_FILES", "FIND", "SEARCH", "READ_FILE", "FINISH_TASK", "NOTES"
+                "LIST_FILES", "FIND", "SEARCH", "READ_FILE", "NOTES"
             };
             return planningTools.Contains(toolName);
         }
@@ -100,7 +99,7 @@ namespace duo_code.Tools.Core
             // Orchestrator mode can spawn subagents and use basic analysis tools
             var orchestratorTools = new HashSet<string>
             {
-                "LIST_FILES", "FIND", "SEARCH", "READ_FILE", "SPAWN_SUBAGENT", "FINISH_TASK", "NOTES"
+                "LIST_FILES", "FIND", "SEARCH", "READ_FILE", "SPAWN_SUBAGENT", "NOTES"
             };
             return orchestratorTools.Contains(toolName);
         }

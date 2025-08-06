@@ -28,12 +28,12 @@ namespace duo_code.Utils
 
         public static void WriteAssistantResponse(string response)
         {
-            AnsiConsole.MarkupLine($"[yellow]>[/] {response}");
+            AnsiConsole.MarkupLine($"[yellow]>[/] {EscapeMarkup(response)}");
         }
 
         public static void WriteToolResult(string result)
         {
-            AnsiConsole.MarkupLine($"[cyan]>[/] {result}");
+            AnsiConsole.MarkupLine($"[cyan]>[/] {EscapeMarkup(result)}");
         }
 
         public static void ShowProgress(string description, Action action)

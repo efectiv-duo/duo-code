@@ -130,7 +130,7 @@ namespace duo_code.Services
                 CurrentState.Messages.Add(new Message { Role = "system", Content = fileReferenceResult.SystemMessageContent });
             }
 
-            // Continue prompting until FINISH_TASK is received
+            // Continue prompting until no tool request is received
             bool taskCompleted = false;
             while (!taskCompleted)
             {
@@ -163,8 +163,6 @@ namespace duo_code.Services
 
                         taskCompleted = await ProcessAssistantResponseAsync(processedResponse);
                     }
-
-                    _logger.SaveConversation(messages.Select(m => $"{m.Role.ToUpper()}:\n{m.Content}\n\n").Aggregate((a, b) => $"{a}\n{b}"));
                 }
                 catch (OperationCanceledException)
                 {
@@ -179,7 +177,7 @@ namespace duo_code.Services
             return Task.Run(() =>
             {
                 var tools = ToolFactory.Parse(response.Content);
-                bool finishTaskFound = false;
+
                 bool userCancelledToolExecution = false;
 
                 var message = new Message
@@ -189,6 +187,16 @@ namespace duo_code.Services
                     Thinking = response.Thinking,
                     Actions = new List<IToolAction>()
                 };
+
+                CurrentState.Messages.Add(message);
+
+                if (tools.Count == 0)
+                {
+                    // If no tools have to be executed, just display the assistant's response.
+                    WriteAssistantResponse(response.Content);
+
+                    return true;
+                }
 
                 foreach (var tool in tools)
                 {
@@ -201,13 +209,7 @@ namespace duo_code.Services
 
                     WriteAssistantResponse($"Executing {tool.ConsoleRequestMessage}");
 
-                    // Check if this is the FINISH_TASK tool
-                    if (tool.ToolName == "FINISH_TASK")
-                    {
-                        finishTaskFound = true;
-                    }
-
-                    if (tool.RequiresConfirmation && !finishTaskFound)
+                    if (tool.RequiresConfirmation)
                     {
                         if (!_console.WaitForContinueOrCancel())
                         {
@@ -235,8 +237,6 @@ namespace duo_code.Services
                     }
                 }
 
-                CurrentState.Messages.Add(message);
-
                 // Add tool results as a user message if there were any tools executed
                 if (message.Actions != null && message.Actions.Count > 0)
                 {
@@ -246,16 +246,15 @@ namespace duo_code.Services
                         Content = message.BuildToolResultsMessage(),
                         Actions = message.Actions
                     };
+
                     CurrentState.Messages.Add(toolResultsMessage);
                 }
                 else
                 {   // If no tools were executed, just display the assistant's response.
                     WriteAssistantResponse(response.Content);
-                    // If there were no tools and no FINISH_TASK, then the task is considered finished
-                    finishTaskFound = true;
                 }
 
-                return finishTaskFound || userCancelledToolExecution; // Return true if task finished OR user cancelled tools
+                return userCancelledToolExecution; // Return true if task finished OR user cancelled tools
             });
         }
 
@@ -352,8 +351,7 @@ namespace duo_code.Services
             starterMessages.Add(new Message
             {
                 Role = "assistant",
-                Content = @"FINISH_TASK:
-Current directory context analyzed."
+                Content = "Current directory context analyzed."
             });
 
             return starterMessages;

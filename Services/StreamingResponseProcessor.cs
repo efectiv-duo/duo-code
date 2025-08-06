@@ -243,13 +243,32 @@ public static class StreamingResponseProcessor
             if (candidate.TryGetProperty("content", out var content) && 
                 content.TryGetProperty("parts", out var parts) && parts.GetArrayLength() > 0)
             {
-                var part = parts[0];
-                if (part.TryGetProperty("text", out var text))
+                foreach (var part in parts.EnumerateArray())
                 {
-                    var contentChunk = text.GetString();
-                    if (!string.IsNullOrEmpty(contentChunk))
+                    // Check if this is a thought part
+                    bool isThought = false;
+                    if (part.TryGetProperty("thought", out var thoughtProp))
                     {
-                        buffer.Append(contentChunk);
+                        isThought = thoughtProp.GetBoolean();
+                    }
+                    
+                    if (part.TryGetProperty("text", out var text))
+                    {
+                        var contentChunk = text.GetString();
+                        if (!string.IsNullOrEmpty(contentChunk))
+                        {
+                            // Wrap thought content in think tags for consistent processing
+                            if (isThought)
+                            {
+                                buffer.Append("<think>");
+                                buffer.Append(contentChunk);
+                                buffer.Append("</think>");
+                            }
+                            else
+                            {
+                                buffer.Append(contentChunk);
+                            }
+                        }
                     }
                 }
             }
