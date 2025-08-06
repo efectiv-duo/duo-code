@@ -5,6 +5,7 @@ namespace duo_code.Tools;
 public class RenameFileAction : ToolActionBase
 {
     public override string ToolName => "RENAME_FILE";
+       public override bool RequiresConfirmation => true;
     public override string Description => @"Rename or move a file.
 Format:
 RENAME_FILE: old_path > new_path";

@@ -103,9 +103,9 @@ LIST_FILES: path depth:N directories_only:true/false";
 
             output.AppendLine("[SUMMARY]");
             var totalDirs = directoriesInfo.Values.Sum(v => v.dirCount);
-            output.AppendLine($"Total: {_fileCount} files, {totalDirs} directories ({FormatSize(_totalSize)})");
+            output.AppendLine($"Total listed: {_fileCount} files, {totalDirs} directories ({FormatSize(_totalSize)})");
 
-            ConsoleMessage = $"Listed {totalDirs} dirs, {_fileCount} files ({FormatSize(_totalSize)})";
+            ConsoleResultMessage = $"Listed {totalDirs} dirs, {_fileCount} files ({FormatSize(_totalSize)})";
 
             return output.ToString();
         }
@@ -267,40 +267,6 @@ LIST_FILES: path depth:N directories_only:true/false";
                 _ => $"{(int)(age.TotalDays / 365)} years ago"
             }
         };
-    }
-
-    protected override string? CreateSummary(string fullResult)
-    {
-        var lines = fullResult.Split('\n');
-
-        if (lines.Length <= 50) return null;
-
-        var result = new StringBuilder();
-        var inContent = false;
-        var contentLineCount = 0;
-
-        for (int i = 0; i < lines.Length; i++)
-        {
-            var line = lines[i];
-
-            if (line.StartsWith('[') && !line.StartsWith("[SUMMARY]") && !line.StartsWith("[META]") && !line.StartsWith("[WARNING]"))
-                inContent = true;
-            else if (line.StartsWith("[SUMMARY]"))
-                inContent = false;
-
-            if (!inContent || contentLineCount < 30)
-            {
-                result.AppendLine(line);
-                if (inContent) contentLineCount++;
-            }
-            else if (contentLineCount == 30)
-            {
-                result.AppendLine("... [OUTPUT TRUNCATED] ...");
-                contentLineCount++;
-            }
-        }
-
-        return result.ToString();
     }
 
     private static string BuildPath(string parent, string child)

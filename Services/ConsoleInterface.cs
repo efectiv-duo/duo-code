@@ -454,22 +454,28 @@ namespace duo_code.Services
 
         public bool WaitForContinueOrCancel()
         {
-            Console.WriteLine("Press [Space] to continue or [Esc] to cancel...");
-            
+            WriteInfo("Press [Space] to continue or [Esc] to cancel...");
+
+            var result = false;
             while (true)
             {
                 var key = Console.ReadKey(true);
+
                 if (key.Key == ConsoleKey.Spacebar)
                 {
-                    Console.WriteLine("✓ Continue");
-                    return true;
+                    result = true;
+                    break;
                 }
                 else if (key.Key == ConsoleKey.Escape)
                 {
-                    Console.WriteLine("✗ Cancelled");
-                    return false;
+                    result = false;
+                    break;
                 }
             }
+
+            Console.Write("\x1b[1A\x1b[2K");
+
+            return result;
         }
 
         public void ShowProgress(string description, Action action)

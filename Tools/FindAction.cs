@@ -65,7 +65,7 @@ FIND: pattern";
         
         output.AppendLine($"\nFound {results.Count} files");
 
-        ConsoleMessage = $"Found {results.Count} files";
+        ConsoleResultMessage = $"Found {results.Count} files";
 
         return output.ToString();
     }

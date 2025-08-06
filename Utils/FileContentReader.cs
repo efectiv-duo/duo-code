@@ -21,9 +21,15 @@ public static class FileContentReader
         var result = new StringBuilder();
         var linesRead = 0;
         var currentLine = 0;
+        var totalLines = 0;
         
         try
         {
+            // First pass: count total lines to determine padding width
+            totalLines = File.ReadLines(filePath).Count();
+            var lineNumberWidth = GetLineNumberWidth(totalLines);
+            
+            // Second pass: read the requested lines with proper formatting
             foreach (var line in File.ReadLines(filePath))
             {
                 currentLine++;
@@ -34,7 +40,8 @@ public static class FileContentReader
                 if (endLine != -1 && currentLine > endLine)
                     break;
                     
-                result.AppendLine($"{currentLine}:{line}");
+                var lineNumber = FormatLineNumber(currentLine, lineNumberWidth);
+                result.AppendLine($"{lineNumber}{line}");
                 linesRead++;
             }
             
@@ -58,5 +65,20 @@ public static class FileContentReader
         }
         
         return (result.ToString(), linesRead);
+    }
+    
+    private static int GetLineNumberWidth(int totalLines)
+    {
+        // Determine padding width based on file size
+        if (totalLines < 1000) return 3;
+        if (totalLines < 10000) return 4;
+        if (totalLines < 100000) return 5;
+        return 6; // Support up to 999,999 lines
+    }
+    
+    private static string FormatLineNumber(int lineNumber, int width)
+    {
+        // Format: [L001], [L0001], etc.
+        return $"[L{lineNumber.ToString().PadLeft(width, '0')}]";
     }
 }

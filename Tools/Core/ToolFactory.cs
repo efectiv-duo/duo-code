@@ -69,32 +69,32 @@ public static class ToolFactory
                 case "UPDATE_FILE":
                     var content = string.Join(Environment.NewLine, lines.Skip(contentStartIndex).Take(contentEndIndex - contentStartIndex));
                     action = toolType == "CREATE_FILE"
-                        ? new CreateFileAction { Path = args, Content = content }
-                        : new UpdateFileAction { Path = args, Content = content };
+                        ? new CreateFileAction { Path = args, Content = content, ConsoleRequestMessage = currentLine }
+                        : new UpdateFileAction { Path = args, Content = content, ConsoleRequestMessage = currentLine };
                     break;
                 case "DELETE_FILE":
-                    action = new DeleteFileAction { Path = args };
+                    action = new DeleteFileAction { Path = args, ConsoleRequestMessage = currentLine };
                     break;
                 case "CREATE_DIR":
-                    action = new CreateDirectoryAction { Path = args };
+                    action = new CreateDirectoryAction { Path = args, ConsoleRequestMessage = currentLine };
                     break;
                 case "DELETE_DIR":
-                    action = new DeleteDirectoryAction { Path = args };
+                    action = new DeleteDirectoryAction { Path = args, ConsoleRequestMessage = currentLine };
                     break;
                 case "LIST_FILES":
-                    action = ParseListFilesAction(args);
+                    action = ParseListFilesAction(args, currentLine);
                     break;
                 case "FIND":
-                    action = new FindAction { Pattern = args };
+                    action = new FindAction { Pattern = args, ConsoleRequestMessage = currentLine };
                     break;
                 case "SEARCH":
-                    action = new SearchAction { Pattern = args };
+                    action = new SearchAction { Pattern = args, ConsoleRequestMessage = currentLine };
                     break;
                 case "READ_FILE":
-                    action = ParseReadFileAction(args);
+                    action = ParseReadFileAction(args, currentLine);
                     break;
                 case "RUN_COMMAND":
-                    action = new RunCommandAction { Command = args };
+                    action = new RunCommandAction { Command = args, ConsoleRequestMessage = currentLine };
                     break;
                 case "FINISH_TASK":
                     var message = string.Join(Environment.NewLine, lines.Skip(contentStartIndex).Take(contentEndIndex - contentStartIndex));
@@ -103,7 +103,7 @@ public static class ToolFactory
                 case "RENAME_FILE":
                     var paths = args.Split(new[] { '>' }, 2);
                     if (paths.Length != 2) throw new ArgumentException("Invalid RENAME_FILE format. Use 'old_path > new_path'");
-                    action = new RenameFileAction { OldPath = paths[0].Trim(), NewPath = paths[1].Trim() };
+                    action = new RenameFileAction { OldPath = paths[0].Trim(), NewPath = paths[1].Trim(), ConsoleRequestMessage = currentLine };
                     break;
                 case "NOTES":
                     var notes = string.Join(Environment.NewLine, lines.Skip(contentStartIndex).Take(contentEndIndex - contentStartIndex));
@@ -111,7 +111,7 @@ public static class ToolFactory
                     break;
                 case "SPAWN_SUBAGENT":
                     var prompt = string.Join(Environment.NewLine, lines.Skip(contentStartIndex).Take(contentEndIndex - contentStartIndex));
-                    action = new SpawnSubagentAction { TaskDescription = args, Prompt = prompt };
+                    action = new SpawnSubagentAction { TaskDescription = args, Prompt = prompt, ConsoleRequestMessage = currentLine };
                     break;
             }
 
@@ -140,17 +140,17 @@ public static class ToolFactory
         return validTools.Any(tool => line.StartsWith(tool + ":"));
     }
 
-    private static ListFilesAction ParseListFilesAction(string args)
+    private static ListFilesAction ParseListFilesAction(string args, string currentLine)
     {
         if (string.IsNullOrEmpty(args))
-            return new ListFilesAction { Path = "." };
+            return new ListFilesAction { Path = ".", ConsoleRequestMessage = currentLine };
 
         var parts = args.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
         
         if (parts.Length == 0)
-            return new ListFilesAction { Path = "." };
+            return new ListFilesAction { Path = ".", ConsoleRequestMessage = currentLine };
 
-        var action = new ListFilesAction { Path = parts[0] };
+        var action = new ListFilesAction { Path = parts[0], ConsoleRequestMessage = currentLine };
 
         // Parse additional parameters
         for (int i = 1; i < parts.Length; i++)
@@ -173,18 +173,18 @@ public static class ToolFactory
         return action;
     }
 
-    private static ReadFileAction ParseReadFileAction(string args)
+    private static ReadFileAction ParseReadFileAction(string args, string currentLine)
     {
         if (string.IsNullOrEmpty(args))
-            return new ReadFileAction { Path = "", CompressService = _compressService };
+            return new ReadFileAction { Path = "", CompressService = _compressService, ConsoleRequestMessage = currentLine };
 
         // Parse path and optional parameters (lines and purpose)
         var parts = args.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
 
         if (parts.Length == 0)
-            return new ReadFileAction { Path = "", CompressService = _compressService };
+            return new ReadFileAction { Path = "", CompressService = _compressService, ConsoleRequestMessage = currentLine };
 
-        var action = new ReadFileAction { Path = parts[0], CompressService = _compressService };
+        var action = new ReadFileAction { Path = parts[0], CompressService = _compressService, ConsoleRequestMessage = currentLine };
 
         // Parse additional parameters
         for (int i = 1; i < parts.Length; i++)

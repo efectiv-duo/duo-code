@@ -58,37 +58,10 @@ READ_FILE: file_path lines:start+count purpose:read_purpose";
             return content;
             
         result.Append(content);
-        ConsoleMessage = $"Read {lineCount} lines from {Path}";
+        ConsoleResultMessage = $"Read {lineCount} lines from {Path}";
         
         return result.ToString();
     }
-
-    protected override string? CreateSummary(string fullResult)
-    {
-        // For small files, no summary needed
-        if (fullResult.Length <= 500) return null;
-
-        // Trigger async AI summarization if service is available
-        if (CompressService != null)
-        {
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    var summary = await CompressService.CompressCodeAsync(fullResult);
-                    SummarizedResult = $"[File content summary]\n{summary}";
-                }
-                catch { /* Ignore summarization errors */ }
-            });
-
-            // Return a placeholder while summarization happens
-            return "[Truncated file content]\n" + GetTruncatedContent(fullResult);
-        }
-
-        // Fallback to simple truncation
-        return GetTruncatedContent(fullResult);
-    }
-
 
     private (int startLine, int endLine) ParseLineRange(string lineRange)
     {

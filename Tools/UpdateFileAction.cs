@@ -8,6 +8,7 @@ namespace duo_code.Tools;
 public class UpdateFileAction : ToolActionBase
 {
     public override string ToolName => "UPDATE_FILE";
+       public override bool RequiresConfirmation => true;
     public override string Description => @"Applies Unified Diff format changes to a file.
 Format:
 UPDATE_FILE: file_path
@@ -90,7 +91,7 @@ Line 2
                 consoleOutput.AppendLine($"[dim]{escapedLine}[/]");
         }
         
-        ConsoleMessage = consoleOutput.ToString().TrimEnd();
+        ConsoleResultMessage = consoleOutput.ToString().TrimEnd();
     }
     
     private string BuildResponse(string fullPath, int changeCount)

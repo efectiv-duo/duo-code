@@ -37,13 +37,9 @@ public class Message
         return string.Join("\n\n", results);
     }
 
-    private string FormatToolResult(IToolAction action, bool forSummary)
-    {
-        var resultText = forSummary && action.SummarizedResult != null 
-            ? action.SummarizedResult 
-            : action.ResultMessage;
-            
-        return $"{resultText}";
+    private string? FormatToolResult(IToolAction action, bool forSummary)
+    {            
+        return action.ResultMessage;
     }
 
     /// <summary>

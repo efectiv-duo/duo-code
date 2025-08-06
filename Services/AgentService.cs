@@ -1,8 +1,7 @@
 using duo_code.Commands.Core;
-using duo_code.Models;
+using duo_code.Services.Interfaces;
 using duo_code.Tools;
 using duo_code.Tools.Core;
-using duo_code.Services.Interfaces;
 using Spectre.Console;
 
 namespace duo_code.Services
@@ -50,14 +49,14 @@ namespace duo_code.Services
                 try
                 {
                     var (input, modeSwitch) = await _console.GetUserInputAsync(CurrentState.CurrentMode);
-                        
+
                     // Handle mode switch
                     if (modeSwitch.HasValue)
                     {
                         CurrentState.CurrentMode = modeSwitch.Value;
                         continue;
                     }
-                        
+
                     if (string.IsNullOrWhiteSpace(input)) continue;
 
                     if (input.StartsWith('/'))
@@ -121,10 +120,10 @@ namespace duo_code.Services
         {
             // Process file references in user input
             var fileReferenceResult = await _fileReferenceService.ProcessFileReferencesAsync(userInput);
-            
+
             // Add user message
             CurrentState.Messages.Add(new Message { Role = "user", Content = fileReferenceResult.ProcessedUserContent });
-            
+
             // Add system message with file references if any exist
             if (fileReferenceResult.HasFileReferences && !string.IsNullOrEmpty(fileReferenceResult.SystemMessageContent))
             {
@@ -144,7 +143,7 @@ namespace duo_code.Services
                 {
                     // Refresh API service if provider changed
                     RefreshApiServiceIfNeeded();
-                    
+
                     // Convert to CerebrasMessage format
                     var messages = messageHistory.Select(m => new CerebrasMessage
                     {
@@ -181,6 +180,7 @@ namespace duo_code.Services
             {
                 var tools = ToolFactory.Parse(response.Content);
                 bool finishTaskFound = false;
+                bool userCancelledToolExecution = false;
 
                 var message = new Message
                 {
@@ -192,7 +192,14 @@ namespace duo_code.Services
 
                 foreach (var tool in tools)
                 {
-                    WriteInfo($"Executing {tool.ToolName}");
+                    if (userCancelledToolExecution) // If user already cancelled a previous tool, skip remaining
+                    {
+                        tool.SkipExecution();
+                        message.Actions.Add(tool);
+                        continue;
+                    }
+
+                    WriteAssistantResponse($"Executing {tool.ConsoleRequestMessage}");
 
                     // Check if this is the FINISH_TASK tool
                     if (tool.ToolName == "FINISH_TASK")
@@ -200,12 +207,23 @@ namespace duo_code.Services
                         finishTaskFound = true;
                     }
 
+                    if (tool.RequiresConfirmation && !finishTaskFound)
+                    {
+                        if (!_console.WaitForContinueOrCancel())
+                        {
+                            tool.CancelExecution();
+                            WriteError(tool.ConsoleResultMessage);
+                            message.Actions.Add(tool);
+                            userCancelledToolExecution = true;
+                            break;
+                        }
+                    }
                     try
                     {
                         tool.Execute(Directory.GetCurrentDirectory());
 
-                        WriteToolResult(tool.ConsoleMessage ?? "no message");
-                        
+                        WriteToolResult(tool.ConsoleResultMessage ?? "no message");
+
                         message.Actions.Add(tool);
                     }
                     catch (Exception ex)
@@ -218,7 +236,7 @@ namespace duo_code.Services
                 }
 
                 CurrentState.Messages.Add(message);
-                
+
                 // Add tool results as a user message if there were any tools executed
                 if (message.Actions != null && message.Actions.Count > 0)
                 {
@@ -231,34 +249,24 @@ namespace duo_code.Services
                     CurrentState.Messages.Add(toolResultsMessage);
                 }
                 else
-                {
+                {   // If no tools were executed, just display the assistant's response.
                     WriteAssistantResponse(response.Content);
-
+                    // If there were no tools and no FINISH_TASK, then the task is considered finished
                     finishTaskFound = true;
                 }
-                
-                // Wait for user input before continuing (unless task is finished)
-                //if (!finishTaskFound)
-                //{
-                //    var shouldContinue = _console.WaitForContinueOrCancel();
-                //    if (!shouldContinue)
-                //    {
-                //        return true; // Exit the loop as if task was completed
-                //    }
-                //}
-                
-                return finishTaskFound;
+
+                return finishTaskFound || userCancelledToolExecution; // Return true if task finished OR user cancelled tools
             });
         }
 
         private List<Message> BuildMessageHistory()
         {
             var history = new List<Message>();
-            
+
             // Add dynamic starter messages first
             var starterMessages = BuildDynamicStarterMessages();
             history.AddRange(starterMessages);
-            
+
             // Add user conversation messages
             var messageCount = CurrentState.Messages.Count;
             for (int i = 0; i < messageCount; i++)

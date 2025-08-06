@@ -25,7 +25,7 @@ message_to_user";
             Environment.Exit(0);
         }
 
-        ConsoleMessage = Message;
+        ConsoleResultMessage = Message;
         
         return $"Successfully ended task with message: {Message}"; ; // The message is the result for normal operation
     }

@@ -6,12 +6,15 @@ public abstract class ToolActionBase : IToolAction
 {
     public abstract string ToolName { get; }
     public abstract string Description { get; }
+    public virtual bool RequiresConfirmation => false; // Default to false for safe tools
     
+    // Request
+    public string? ConsoleRequestMessage { get; set; }
+
     // Tool result storage
     public string? ResultMessage { get; set; }
-    public string? ConsoleMessage { get; set; }
-    public string? SummarizedResult { get; set; }
-    
+    public string? ConsoleResultMessage { get; set; }
+
     // Service for AI summarization (optional, set by factory if needed)
     public CompressCodeService? CompressService { get; set; }
     
@@ -20,25 +23,27 @@ public abstract class ToolActionBase : IToolAction
     {
         ResultMessage = ExecuteCore(baseDirectory);
 
-        // Let each tool decide how to summarize
-        SummarizedResult = CreateSummary(ResultMessage);
-
         // Set console message
-        ConsoleMessage = ConsoleMessage ?? ResultMessage;
+        ConsoleResultMessage = ConsoleResultMessage ?? ResultMessage;
+        
+        return ResultMessage;
+    }
+
+    public void SkipExecution()
+    {
+        ResultMessage = "Tool execution skipped due to prior user cancellation";
+    }
+
+    public string CancelExecution()
+    {
+        ConsoleResultMessage = ResultMessage = "Tool execution cancelled by user";
         
         return ResultMessage;
     }
     
     // Subclasses implement the actual execution logic
     protected abstract string ExecuteCore(string baseDirectory);
-    
-    // Subclasses can override to provide custom summarization
-    protected virtual string? CreateSummary(string fullResult)
-    {
-        // By default, no summarization
-        return null;
-    }
-    
+        
     public abstract override string ToString();
     
     /// <summary>

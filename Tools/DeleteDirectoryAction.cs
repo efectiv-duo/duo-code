@@ -5,6 +5,7 @@ namespace duo_code.Tools;
 public class DeleteDirectoryAction : ToolActionBase
 {
     public override string ToolName => "DELETE_DIR";
+       public override bool RequiresConfirmation => true;
     public override string Description => @"Delete a directory and all its contents.
 Format:
 DELETE_DIR: directory_path";
