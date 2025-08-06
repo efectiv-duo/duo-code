@@ -33,7 +33,7 @@ namespace duo_code.Utils
 
         public static void WriteToolResult(string result)
         {
-            AnsiConsole.MarkupLine($"[cyan]>[/] {EscapeMarkup(result)}");
+            AnsiConsole.MarkupLine($"[cyan]>[/] {result}");
         }
 
         public static void ShowProgress(string description, Action action)
