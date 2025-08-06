@@ -32,7 +32,8 @@ public static class CurrentState
         {
             ApiProvider.Gemini, new List<string>
             {
-                "gemini-2.5-flash"
+                "gemini-2.5-flash",
+                "gemini-2.5-pro"
             }
         }
     };
