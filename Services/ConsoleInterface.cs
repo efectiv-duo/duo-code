@@ -29,19 +29,9 @@ namespace duo_code.Services
 
             WriteLine();
 
-            var panel = new Panel(new Markup(
-                "[dim]Type [bold]/help[/] for available commands or [bold]/exit[/] to quit.[/]\n" +
-                "[dim]Use [bold cyan]Shift+Tab[/] to switch between modes.[/]\n" +
-                "[dim]Navigation: [bold green]↑↓[/] for history, [bold green]←→[/] for cursor, [bold green]Tab[/] for completion[/]"))
-            {
-                Header = new PanelHeader("[green]Welcome[/]"),
-                Border = BoxBorder.Rounded,
-                BorderStyle = Style.Parse("green")
-            };
-            
-            AnsiConsole.Write(panel);
-            
             var logger = new ConversationLogger();
+            AnsiConsole.MarkupLine("[dim]Type [bold]/help[/] for commands. [bold]/exit[/] to quit.[/]");
+            AnsiConsole.MarkupLine("[dim]Press [bold cyan]Shift+Tab[/] to switch modes.[/]");
             WriteInfo($"Conversation logs saved to: {logger.GetLogsDirectory()}");
             WriteInfo($"Current working directory: {Directory.GetCurrentDirectory()}");
             AnsiConsole.WriteLine();

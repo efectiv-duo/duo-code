@@ -22,6 +22,56 @@ Line 2
     public string Path { get; set; } = string.Empty;
     public string Content { get; set; } = string.Empty; // This will hold the diff text
 
+    public void SetupPreview(string baseDirectory)
+    {
+        if (string.IsNullOrWhiteSpace(Path))
+        {
+            ConsoleRequestMessage = "UPDATE_FILE: Error - File path cannot be empty";
+            return;
+        }
+            
+        if (string.IsNullOrWhiteSpace(Content))
+        {
+            ConsoleRequestMessage = "UPDATE_FILE: Error - Diff content cannot be empty";
+            return;
+        }
+        
+        var fullPath = ResolvePath(baseDirectory, Path);
+        
+        if (!File.Exists(fullPath))
+        {
+            ConsoleRequestMessage = $"UPDATE_FILE: Error - File not found: {Path}";
+            return;
+        }
+
+        var diffLines = Content.Split('\n');
+        var changeCount = diffLines.Count(line => 
+            line.StartsWith("+") || line.StartsWith("-"));
+        
+        var preview = new StringBuilder();
+        preview.AppendLine($"UPDATE_FILE: {Path} ({changeCount} change{(changeCount != 1 ? "s" : "")})");
+        preview.AppendLine();
+        
+        foreach (var line in diffLines)
+        {
+            if (string.IsNullOrWhiteSpace(line)) 
+                continue;
+                
+            var escapedLine = EscapeMarkup(line);
+            
+            if (line.StartsWith("@@"))
+                preview.AppendLine($"[blue]{escapedLine}[/]");
+            else if (line.StartsWith("+"))
+                preview.AppendLine($"[green]{escapedLine}[/]");
+            else if (line.StartsWith("-"))
+                preview.AppendLine($"[red]{escapedLine}[/]");
+            else if (!line.StartsWith("UPDATE_FILE:"))
+                preview.AppendLine($"[dim]{escapedLine}[/]");
+        }
+        
+        ConsoleRequestMessage = preview.ToString().TrimEnd();
+    }
+
     protected override string ExecuteCore(string baseDirectory)
     {
         if (string.IsNullOrWhiteSpace(Path))
@@ -51,7 +101,7 @@ Line 2
             var changeCount = diffLines.Count(line => 
                 line.StartsWith("+") || line.StartsWith("-"));
             
-            BuildConsoleMessage(diffLines, changeCount);
+            BuildConsoleMessage(changeCount);
             
             return BuildResponse(fullPath, changeCount);
         }
@@ -69,29 +119,9 @@ Line 2
         }
     }
     
-    private void BuildConsoleMessage(string[] diffLines, int changeCount)
+    private void BuildConsoleMessage(int changeCount)
     {
-        var consoleOutput = new StringBuilder();
-        consoleOutput.AppendLine($"Applied {changeCount} change{(changeCount != 1 ? "s" : "")} to {Path}");
-
-        foreach (var line in diffLines)
-        {
-            if (string.IsNullOrWhiteSpace(line)) 
-                continue;
-                
-            var escapedLine = EscapeMarkup(line);
-            
-            if (line.StartsWith("@@"))
-                consoleOutput.AppendLine($"[blue]{escapedLine}[/]");
-            else if (line.StartsWith("+"))
-                consoleOutput.AppendLine($"[green]{escapedLine}[/]");
-            else if (line.StartsWith("-"))
-                consoleOutput.AppendLine($"[red]{escapedLine}[/]");
-            else if (!line.StartsWith("UPDATE_FILE:"))
-                consoleOutput.AppendLine($"[dim]{escapedLine}[/]");
-        }
-        
-        ConsoleResultMessage = consoleOutput.ToString().TrimEnd();
+        ConsoleResultMessage = $"Successfully applied {changeCount} change{(changeCount != 1 ? "s" : "")} to {Path}";
     }
     
     private string BuildResponse(string fullPath, int changeCount)
@@ -110,16 +140,5 @@ Line 2
     public override string ToString()
     {
         return $"{ToolName}: {Path}";
-    }
-    
-    private static string EscapeMarkup(string text)
-    {
-        if (string.IsNullOrEmpty(text))
-            return text;
-            
-        // Escape special markup characters
-        return text
-            .Replace("[", "[[")
-            .Replace("]", "]]");
     }
 }

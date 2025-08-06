@@ -31,6 +31,11 @@ namespace duo_code.Utils
             AnsiConsole.MarkupLine($"[yellow]>[/] {EscapeMarkup(response)}");
         }
 
+        public static void WriteToolRequest(string result)
+        {
+            AnsiConsole.MarkupLine($"[cyan]>[/] {result}");
+        }
+
         public static void WriteToolResult(string result)
         {
             AnsiConsole.MarkupLine($"[cyan]>[/] {result}");
@@ -90,7 +95,7 @@ namespace duo_code.Utils
         }
 
         // Helper method to escape markup for Spectre.Console
-        private static string EscapeMarkup(string text)
+        public static string EscapeMarkup(string text)
         {
             return text.Replace("[", "[[").Replace("]", "]]");
         }

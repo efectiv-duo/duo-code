@@ -207,7 +207,7 @@ namespace duo_code.Services
                         continue;
                     }
 
-                    WriteAssistantResponse($"Executing {tool.ConsoleRequestMessage}");
+                    WriteToolRequest(tool.ConsoleRequestMessage);
 
                     if (tool.RequiresConfirmation)
                     {
