@@ -33,6 +33,13 @@ public static class CurrentState
             {
                 "gemini-2.5-flash"
             }
+        },
+        {
+            ApiProvider.OpenAI, new List<string>
+            {
+                "gpt-4o",
+                "gpt-3.5-turbo"
+            }
         }
     };
 }
