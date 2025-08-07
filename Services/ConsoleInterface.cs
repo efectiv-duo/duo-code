@@ -29,20 +29,11 @@ namespace duo_code.Services
 
             WriteLine();
 
-            var panel = new Panel(new Markup(
-                "[dim]Type [bold]/help[/] for available commands or [bold]/exit[/] to quit.[/]\n" +
-                "[dim]Use [bold cyan]Shift+Tab[/] to switch between modes.[/]\n" +
-                "[dim]Navigation: [bold green]↑↓[/] for history, [bold green]←→[/] for cursor, [bold green]Tab[/] for completion[/]"))
-            {
-                Header = new PanelHeader("[green]Welcome[/]"),
-                Border = BoxBorder.Rounded,
-                BorderStyle = Style.Parse("green")
-            };
-            
-            AnsiConsole.Write(panel);
-            
             var logger = new ConversationLogger();
-            Console.WriteLine($"Conversation logs saved to: {logger.GetLogsDirectory()}");
+            AnsiConsole.MarkupLine("[dim]Type [bold]/help[/] for commands. [bold]/exit[/] to quit.[/]");
+            AnsiConsole.MarkupLine("[dim]Press [bold cyan]Shift+Tab[/] to switch modes.[/]");
+            WriteInfo($"Conversation logs saved to: {logger.GetLogsDirectory()}");
+            WriteInfo($"Current working directory: {Directory.GetCurrentDirectory()}");
             AnsiConsole.WriteLine();
         }
 
@@ -56,9 +47,17 @@ namespace duo_code.Services
         
         public async Task<(string input, Mode? modeSwitch)> GetUserInputAsync(Mode currentMode)
         {
-            LoadCommandHistory();
+            // Simple console read implementation
+            ShowPrompt(currentMode);
+            var input = await Task.Run(() => Console.ReadLine() ?? string.Empty);
             
-            return await Task.Run(() => GetUserInputWithCustomHandling(currentMode));
+            // Add to history if not empty
+            if (!string.IsNullOrWhiteSpace(input))
+            {
+                AddToHistory(input);
+            }
+            
+            return (input, null);
         }
         
         private (string input, Mode? modeSwitch) GetUserInputWithCustomHandling(Mode currentMode)
@@ -329,6 +328,15 @@ namespace duo_code.Services
                 _ => Mode.Default
             };
         }
+        
+        private void ShowPrompt(Mode currentMode)
+        {
+            var promptText = currentMode switch
+            {
+                _ => "[magenta]>[/] "
+            };
+            AnsiConsole.Markup(promptText);
+        }
 
         public void ShowError(string error)
         {
@@ -436,22 +444,28 @@ namespace duo_code.Services
 
         public bool WaitForContinueOrCancel()
         {
-            Console.WriteLine("Press [Space] to continue or [Esc] to cancel...");
-            
+            WriteInfo("Press [Space] to continue or [Esc] to cancel...");
+
+            var result = false;
             while (true)
             {
                 var key = Console.ReadKey(true);
+
                 if (key.Key == ConsoleKey.Spacebar)
                 {
-                    Console.WriteLine("✓ Continue");
-                    return true;
+                    result = true;
+                    break;
                 }
                 else if (key.Key == ConsoleKey.Escape)
                 {
-                    Console.WriteLine("✗ Cancelled");
-                    return false;
+                    result = false;
+                    break;
                 }
             }
+
+            Console.Write("\x1b[1A\x1b[2K");
+
+            return result;
         }
 
         public void ShowProgress(string description, Action action)

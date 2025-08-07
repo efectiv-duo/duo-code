@@ -5,6 +5,7 @@ namespace duo_code.Tools;
 public class DeleteDirectoryAction : ToolActionBase
 {
     public override string ToolName => "DELETE_DIR";
+       public override bool RequiresConfirmation => true;
     public override string Description => @"Delete a directory and all its contents.
 Format:
 DELETE_DIR: directory_path";
@@ -18,7 +19,7 @@ DELETE_DIR: directory_path";
         {
             // The 'true' recursively deletes all contents.
             Directory.Delete(fullPath, true);
-            return $"Successfully deleted directory and its contents: {Path}";
+            return $"Successfully deleted dir and it's contents: {Path}";
         }
         else
         {

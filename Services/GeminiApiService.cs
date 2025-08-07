@@ -78,12 +78,17 @@ public class GeminiApiService : IApiService
             };
         }
         
-        // Add generation config
+        // Add generation config with thinking support
         request.GenerationConfig = new GenerationConfig
         {
             Temperature = 0.5f,
             TopP = 0.95f,
-            MaxOutputTokens = 8192
+            MaxOutputTokens = 65536,
+            ThinkingConfig = new ThinkingConfig
+            {
+                ThinkingBudget = -1,  // Dynamic thinking budget
+                IncludeThoughts = true
+            }
         };
         
         return request;
@@ -132,6 +137,18 @@ public class GeminiApiService : IApiService
         
         [JsonProperty("maxOutputTokens", NullValueHandling = NullValueHandling.Ignore)]
         public int? MaxOutputTokens { get; set; }
+        
+        [JsonProperty("thinkingConfig", NullValueHandling = NullValueHandling.Ignore)]
+        public ThinkingConfig? ThinkingConfig { get; set; }
+    }
+    
+    private class ThinkingConfig
+    {
+        [JsonProperty("thinkingBudget")]
+        public int ThinkingBudget { get; set; }
+        
+        [JsonProperty("includeThoughts")]
+        public bool IncludeThoughts { get; set; }
     }
     #endregion
 }

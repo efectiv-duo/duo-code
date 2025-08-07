@@ -20,6 +20,7 @@ public static class CurrentState
         {
             ApiProvider.Cerebras, new List<string>
             {
+                "qwen-3-coder-480b",
                 "qwen-3-235b-a22b",
                 "qwen-3-32b",
                 "llama-4-maverick-17b-128e-instruct",
@@ -31,7 +32,8 @@ public static class CurrentState
         {
             ApiProvider.Gemini, new List<string>
             {
-                "gemini-2.5-flash"
+                "gemini-2.5-flash",
+                "gemini-2.5-pro"
             }
         },
         {

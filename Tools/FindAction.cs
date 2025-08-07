@@ -11,8 +11,7 @@ Examples: *.cs, **/PatchFile*.cs, Test*.js
 Format:
 FIND: pattern";
     
-    public string Pattern { get; set; } = string.Empty;
-    
+    public string Pattern { get; set; } = string.Empty;    
     
     protected override string ExecuteCore(string baseDirectory)
     {
@@ -65,6 +64,9 @@ FIND: pattern";
         }
         
         output.AppendLine($"\nFound {results.Count} files");
+
+        ConsoleResultMessage = $"Found {results.Count} files";
+
         return output.ToString();
     }
     
