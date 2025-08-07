@@ -4,9 +4,9 @@ namespace duo_code.Services;
 
 public class OpenAIMessageConvertor
 {
-    public static OpenAiRequest ConvertToOpenAiRequest(List<CerebrasMessage> messages, string model)
+    public static OpenAIRequest ConvertToOpenAiRequest(List<CerebrasMessage> messages, string model)
     {
-        var request = new OpenAiRequest
+        var request = new OpenAIRequest
         {
             Model = model,
             Messages = messages.Select(m => new OpenAiMessage
@@ -17,7 +17,7 @@ public class OpenAIMessageConvertor
             Temperature = 0.7f,
             TopP = 1.0f,
             MaxTokens = 4096, // Limita specifică OpenAI, poți ajusta
-            Stream = true
+            Stream = false
         };
 
         return request;

@@ -2,7 +2,7 @@ using Newtonsoft.Json;
 
 namespace duo_code.Models;
 
-public class OpenAiRequest
+public class OpenAIRequest
 {
     [JsonProperty("model")]
     public string Model { get; set; } = "";

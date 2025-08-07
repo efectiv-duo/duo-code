@@ -1,6 +1,5 @@
 using System.Net.Http.Headers;
 using System.Text;
-using System.Text.Json;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
 
@@ -22,8 +21,8 @@ public class OpenAiApiService : IApiService
     }
 
     public async Task<ProcessedResponse> GetAISuggestionAsync(
-        List<CerebrasMessage> messages, 
-        CancellationToken cancellationToken = default, 
+        List<CerebrasMessage> messages,
+        CancellationToken cancellationToken = default,
         string? model = null,
         ConsoleInterface? console = null)
     {
@@ -31,8 +30,8 @@ public class OpenAiApiService : IApiService
 
         var request = OpenAIMessageConvertor.ConvertToOpenAiRequest(messages, usedModel);
 
-        var jsonSettings = new JsonSerializerSettings 
-        { 
+        var jsonSettings = new JsonSerializerSettings
+        {
             ContractResolver = new CamelCasePropertyNamesContractResolver(),
             NullValueHandling = NullValueHandling.Ignore
         };
@@ -50,7 +49,20 @@ public class OpenAiApiService : IApiService
             response.EnsureSuccessStatusCode(); // va arunca exceptie
         }
 
-        return await StreamingResponseProcessor.ProcessAsync(response, cancellationToken, ApiProvider.OpenAI, console);
+        var responseJson = await response.Content.ReadAsStringAsync();
+
+        var openAIResponse = JsonConvert.DeserializeObject<OpenAIResponse>(responseJson);
+
+        var contentText = openAIResponse?.Choices?.FirstOrDefault()?.Message?.Content ?? "";
+        var tokenCount = openAIResponse?.Usage?.TotalTokens ?? 0;
+
+        Console.WriteLine($"Tokeni folosiți: {tokenCount}");
+
+        return new ProcessedResponse
+        {
+            Content = contentText,
+            TokenCount = tokenCount
+        };
     }
 
     public void Dispose()
