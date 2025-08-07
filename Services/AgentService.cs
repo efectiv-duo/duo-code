@@ -209,6 +209,12 @@ namespace duo_code.Services
 
                     WriteToolRequest(tool.ConsoleRequestMessage);
 
+                    // Display preview if available
+                    if (tool is UpdateFileAction)
+                    {
+                        (tool as UpdateFileAction).DisplayPreview(Directory.GetCurrentDirectory());
+                    }
+
                     if (tool.RequiresConfirmation)
                     {
                         if (!_console.WaitForContinueOrCancel())

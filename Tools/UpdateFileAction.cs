@@ -22,7 +22,7 @@ Line 2
     public string Path { get; set; } = string.Empty;
     public string Content { get; set; } = string.Empty; // This will hold the diff text
 
-    public void SetupPreview(string baseDirectory)
+    public void DisplayPreview(string baseDirectory)
     {
         if (string.IsNullOrWhiteSpace(Path))
         {
@@ -48,28 +48,38 @@ Line 2
         var changeCount = diffLines.Count(line => 
             line.StartsWith("+") || line.StartsWith("-"));
         
-        var preview = new StringBuilder();
-        preview.AppendLine($"UPDATE_FILE: {Path} ({changeCount} change{(changeCount != 1 ? "s" : "")})");
-        preview.AppendLine();
-        
+        // Display the colored preview directly        
         foreach (var line in diffLines)
         {
             if (string.IsNullOrWhiteSpace(line)) 
                 continue;
-                
-            var escapedLine = EscapeMarkup(line);
-            
+
             if (line.StartsWith("@@"))
-                preview.AppendLine($"[blue]{escapedLine}[/]");
+            {
+                Console.ForegroundColor = ConsoleColor.Cyan;
+                Console.WriteLine(line);
+                Console.ResetColor();
+            }
             else if (line.StartsWith("+"))
-                preview.AppendLine($"[green]{escapedLine}[/]");
+            {
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine(line);
+                Console.ResetColor();
+            }
             else if (line.StartsWith("-"))
-                preview.AppendLine($"[red]{escapedLine}[/]");
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine(line);
+                Console.ResetColor();
+            }
             else if (!line.StartsWith("UPDATE_FILE:"))
-                preview.AppendLine($"[dim]{escapedLine}[/]");
+            {
+                Console.WriteLine(line);
+            }
         }
         
-        ConsoleRequestMessage = preview.ToString().TrimEnd();
+        // Set an empty message since we've already displayed the preview
+        ConsoleRequestMessage = string.Empty;
     }
 
     protected override string ExecuteCore(string baseDirectory)
