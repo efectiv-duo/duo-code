@@ -13,6 +13,7 @@ public class AnthropicApiService : IApiService
     private readonly HttpClient _httpClient;
     private readonly string _apiUrl = "https://api.anthropic.com/v1/messages";
 
+    public RateLimitInfo? LastRateLimitInfo { get; private set; }
     public AnthropicApiService(string apiKey)
     {
         _httpClient = new HttpClient();
@@ -41,6 +42,19 @@ public class AnthropicApiService : IApiService
         var content = new StringContent(requestJson, Encoding.UTF8, "application/json");
 
         var response = await _httpClient.PostAsync(_apiUrl, content, cancellationToken);
+
+        if (AnthropicRateLimits.IsRateLimitedResponse(response))
+        {
+            var rateLimitInfo = AnthropicRateLimits.ParseRateLimitHeaders(response);
+            LastRateLimitInfo = rateLimitInfo;
+
+            console?.ShowError("Rate limit exceeded!");
+            rateLimitInfo.DisplayRateLimitInfo();
+
+            var errorContent = await response.Content.ReadAsStringAsync();
+            throw new HttpRequestException($"Rate limit exceeded: {errorContent}");
+        }
+
         response.EnsureSuccessStatusCode();
 
         var responseContent = await response.Content.ReadAsStringAsync();
@@ -57,15 +71,21 @@ public class AnthropicApiService : IApiService
             processedResponse.Content = contentText;
         }
 
-        // Set output tokens if available
+        var rateLimits = AnthropicRateLimits.ParseRateLimitHeaders(response);
+        LastRateLimitInfo = rateLimits;
+
         if (anthropicResponse?.Usage != null)
         {
             processedResponse.OutputTokens = anthropicResponse.Usage.OutputTokens;
-            if (processedResponse.OutputTokens > 0)
-            {
-                console?.ShowInfo($"Output tokens used: {processedResponse.OutputTokens:N0}");
-            }
+
+            AnthropicRateLimits.DisplayCompleteUsageInfo(anthropicResponse.Usage, rateLimits, console);
         }
+        else
+        {
+            rateLimits.DisplayRateLimitInfo();
+            rateLimits.ShowLimitWarnings(console);
+        }
+
 
         return processedResponse;
     }
@@ -143,6 +163,18 @@ public class AnthropicApiService : IApiService
     public void Dispose()
     {
         _httpClient?.Dispose();
+    }
+    public bool IsNearTokenLimit(int threshold = 100)
+    {
+        return LastRateLimitInfo?.IsNearTokenLimit(threshold) ?? false;
+    }
+    public string GetRateLimitSummary()
+    {
+        return LastRateLimitInfo?.GetRateLimitSummary() ?? "No rate limit data available";
+    }
+      public void DisplayCurrentRateLimits()
+    {
+        LastRateLimitInfo?.DisplayRateLimitInfo();
     }
 
 }
