@@ -1,5 +1,6 @@
 ﻿using System.Text;
 using System.Text.Json;
+using System.Xml.XPath;
 using duo_code.Models;
 
 namespace duo_code.Services;
@@ -23,28 +24,55 @@ public static class StreamingResponseProcessor
     {
         // Auto-detect provider if not specified
         var detectedProvider = provider ?? DetectProvider(httpResponse);
-        
-        return detectedProvider switch
+
+        var result = detectedProvider switch
         {
             ApiProvider.Gemini => await ProcessGeminiStreamAsync(httpResponse, cancellationToken, console),
             ApiProvider.Cerebras => await ProcessCerebrasStreamAsync(httpResponse, cancellationToken, console),
-             ApiProvider.Anthropic => await ProcessAnthropicStreamAsync(httpResponse, cancellationToken, console),
+            ApiProvider.Anthropic => await ProcessAnthropicStreamAsync(httpResponse, cancellationToken, console),
             _ => await ProcessCerebrasStreamAsync(httpResponse, cancellationToken, console) // Default to Cerebras
         };
+
+        if (result.HasTokenUsage)
+        {
+            console?.ShowInfo($"Output tokens used: {result.OutputTokens:NO()}");
+        }
+        return result;
     }
 
     private static ApiProvider DetectProvider(HttpResponseMessage httpResponse)
     {
-        // Try to detect based on response headers or URL
+        // Check request URL first (most reliable)
+        var requestUri = httpResponse.RequestMessage?.RequestUri?.ToString();
+        if (requestUri != null)
+        {
+            if (requestUri.Contains("anthropic.com"))
+                return ApiProvider.Anthropic;
+            if (requestUri.Contains("generativelanguage.googleapis.com"))
+                return ApiProvider.Gemini;
+            if (requestUri.Contains("cerebras") || requestUri.Contains("inference.cerebras.ai"))
+                return ApiProvider.Cerebras;
+        }
+
+        // Check response headers
+        var serverHeader = httpResponse.Headers.Server?.ToString();
+        if (!string.IsNullOrEmpty(serverHeader))
+        {
+            if (serverHeader.Contains("anthropic", StringComparison.OrdinalIgnoreCase))
+                return ApiProvider.Anthropic;
+            if (serverHeader.Contains("google", StringComparison.OrdinalIgnoreCase))
+                return ApiProvider.Gemini;
+        }
+
+        // Fallback to content type
         var contentType = httpResponse.Content.Headers.ContentType?.MediaType;
-        
-        // Gemini typically returns application/json, Cerebras returns text/plain for SSE
         if (contentType == "application/json")
         {
             return ApiProvider.Gemini;
         }
-        
-        return ApiProvider.Cerebras; // Default
+
+        // Default
+        return ApiProvider.Cerebras;
     }
 
     private static async Task<ProcessedResponse> ProcessCerebrasStreamAsync(HttpResponseMessage httpResponse, CancellationToken cancellationToken, ConsoleInterface? console)
@@ -62,7 +90,7 @@ public static class StreamingResponseProcessor
         {
             var line = await reader.ReadLineAsync();
             if (line == null || !line.StartsWith("data: ")) continue;
-            
+
             // Check for cancellation
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -95,15 +123,15 @@ public static class StreamingResponseProcessor
 
         var stream = await httpResponse.Content.ReadAsStreamAsync();
         using var reader = new StreamReader(stream);
-        
+
         var jsonContent = await reader.ReadToEndAsync();
-        
+
         // Parse as JSON array
         try
         {
             using var doc = JsonDocument.Parse(jsonContent);
             var root = doc.RootElement;
-            
+
             if (root.ValueKind == JsonValueKind.Array)
             {
                 // It's a proper JSON array
@@ -117,28 +145,28 @@ public static class StreamingResponseProcessor
         {
             // If it's not a valid JSON array, try parsing as comma-separated objects
             var jsonObjects = SplitGeminiJsonObjects(jsonContent);
-        
+
             foreach (var jsonObj in jsonObjects)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                
+
                 try
                 {
                     var cleanJson = jsonObj.Trim();
                     if (string.IsNullOrEmpty(cleanJson)) continue;
-                    
+
                     using var doc = JsonDocument.Parse(cleanJson);
                     ProcessGeminiJsonElement(doc.RootElement, buffer);
                 }
-                catch (JsonException ex) 
-                { 
+                catch (JsonException ex)
+                {
                     // Log the error for debugging
                     console?.ShowError($"JSON Parse Error: {ex.Message}");
                     console?.ShowError($"JSON: {jsonObj.Substring(0, Math.Min(100, jsonObj.Length))}...");
                 }
             }
         }
-        
+
         // Process the complete buffer for thinking blocks
         ProcessContentBuffer(buffer, responseBuilder, thinkingBuilder, currentThinkingBuilder, ref inThinkBlock, console);
 
@@ -152,6 +180,7 @@ public static class StreamingResponseProcessor
         var buffer = new StringBuilder();
         var currentThinkingBuilder = new StringBuilder();
         bool inThinkBlock = false;
+        int outputTokens = 0;
 
         var stream = await httpResponse.Content.ReadAsStreamAsync();
         using var reader = new StreamReader(stream);
@@ -165,7 +194,7 @@ public static class StreamingResponseProcessor
 
             if (line.StartsWith("data: "))
             {
-                var jsonData = line.Substring(6); 
+                var jsonData = line.Substring(6);
 
                 if (jsonData == "[DONE]") break;
 
@@ -179,20 +208,32 @@ public static class StreamingResponseProcessor
                     {
                         var eventType = typeElement.GetString();
 
-                        if (eventType == "content_block_delta")
+                        switch (eventType)
                         {
-                            if (root.TryGetProperty("delta", out var delta) &&
-                                delta.TryGetProperty("text", out var textElement))
-                            {
-                                var contentChunk = textElement.GetString();
-                                if (!string.IsNullOrEmpty(contentChunk))
+                            case "content_block_delta":
+                                if (root.TryGetProperty("delta", out var delta) &&
+                                    delta.TryGetProperty("text", out var textElement))
                                 {
-                                    buffer.Append(contentChunk);
-                                    ProcessContentBuffer(buffer, responseBuilder, thinkingBuilder, currentThinkingBuilder, ref inThinkBlock, console);
+                                    var contentChunk = textElement.GetString();
+                                    if (!string.IsNullOrEmpty(contentChunk))
+                                    {
+                                        buffer.Append(contentChunk);
+                                        ProcessContentBuffer(buffer, responseBuilder, thinkingBuilder, currentThinkingBuilder, ref inThinkBlock, console);
+                                    }
                                 }
-                            }
+                                break;
+
+                            case "message_delta":
+                                if (root.TryGetProperty("delta", out var deltaUsage) &&
+                                    deltaUsage.TryGetProperty("usage", out var usage))
+                                {
+                                    if (usage.TryGetProperty("output_tokens", out var outputTokensElement))
+                                    {
+                                        outputTokens = outputTokensElement.GetInt32();
+                                    }
+                                }
+                                break;
                         }
-                        // Ignore other event types like message_start, content_block_start, etc.
                     }
                 }
                 catch (JsonException)
@@ -202,7 +243,12 @@ public static class StreamingResponseProcessor
             }
         }
 
-        return FinalizeResponse(responseBuilder, thinkingBuilder, currentThinkingBuilder, buffer, inThinkBlock, cancellationToken, console);
+        var result = FinalizeResponse(responseBuilder, thinkingBuilder, currentThinkingBuilder, buffer, inThinkBlock, cancellationToken, console);
+        if (outputTokens > 0)
+        {
+            result.OutputTokens = outputTokens;
+        }
+        return result;
     }
 
     private static void ProcessContentBuffer(StringBuilder buffer, StringBuilder responseBuilder, StringBuilder thinkingBuilder, StringBuilder currentThinkingBuilder, ref bool inThinkBlock, ConsoleInterface? console)
@@ -264,7 +310,7 @@ public static class StreamingResponseProcessor
             console?.ShowInfo("\n[Processing cancelled]");
             throw new OperationCanceledException();
         }
-        
+
         // After the loop, handle any remaining content
         if (!inThinkBlock && buffer.Length > 0)
         {
@@ -301,7 +347,7 @@ public static class StreamingResponseProcessor
         if (element.TryGetProperty("candidates", out var candidates) && candidates.GetArrayLength() > 0)
         {
             var candidate = candidates[0];
-            if (candidate.TryGetProperty("content", out var content) && 
+            if (candidate.TryGetProperty("content", out var content) &&
                 content.TryGetProperty("parts", out var parts) && parts.GetArrayLength() > 0)
             {
                 var part = parts[0];
@@ -321,39 +367,39 @@ public static class StreamingResponseProcessor
     {
         var jsonObjects = new List<string>();
         var cleanContent = jsonContent.Trim();
-        
+
         // Remove outer brackets if present
         if (cleanContent.StartsWith('[')) cleanContent = cleanContent.Substring(1);
         if (cleanContent.EndsWith(']')) cleanContent = cleanContent.Substring(0, cleanContent.Length - 1);
-        
+
         var currentObject = new StringBuilder();
         int braceCount = 0;
         bool inString = false;
         bool escapeNext = false;
-        
+
         for (int i = 0; i < cleanContent.Length; i++)
         {
             char c = cleanContent[i];
-            
+
             if (escapeNext)
             {
                 escapeNext = false;
                 currentObject.Append(c);
                 continue;
             }
-            
+
             if (c == '\\')
             {
                 escapeNext = true;
                 currentObject.Append(c);
                 continue;
             }
-            
+
             if (c == '"')
             {
                 inString = !inString;
             }
-            
+
             if (!inString)
             {
                 if (c == '{')
@@ -365,9 +411,9 @@ public static class StreamingResponseProcessor
                     braceCount--;
                 }
             }
-            
+
             currentObject.Append(c);
-            
+
             // When we complete an object and hit a comma
             if (!inString && braceCount == 0 && c == ',' && currentObject.Length > 1)
             {
@@ -379,7 +425,7 @@ public static class StreamingResponseProcessor
                 currentObject.Clear();
             }
         }
-        
+
         // Add the last object
         if (currentObject.Length > 0)
         {
@@ -389,7 +435,7 @@ public static class StreamingResponseProcessor
                 jsonObjects.Add(objStr);
             }
         }
-        
+
         return jsonObjects;
     }
 }

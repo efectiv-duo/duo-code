@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Net;
 using duo_code.Commands.Actions;
 using duo_code.Models;
+using System.Reflection;
 
 
 namespace duo_code.Services;
@@ -22,39 +23,64 @@ public class AnthropicApiService : IApiService
     }
 
     public async Task<ProcessedResponse> GetAISuggestionAsync(
-        List<CerebrasMessage> messages, 
-        CancellationToken cancellationToken = default, 
-        string? model = null, 
-        ConsoleInterface? console = null)
+    List<CerebrasMessage> messages,
+    CancellationToken cancellationToken = default,
+    string? model = null,
+    ConsoleInterface? console = null)
     {
         var targetModel = model ?? GetAnthropicModel(CurrentState.Model);
         var request = ConvertToAnthropicRequest(messages, targetModel);
-        
-        var jsonOptions = new JsonSerializerOptions 
-        { 
+
+        var jsonOptions = new JsonSerializerOptions
+        {
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
             DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
         };
-        
+
         var requestJson = JsonSerializer.Serialize(request, jsonOptions);
         var content = new StringContent(requestJson, Encoding.UTF8, "application/json");
 
         var response = await _httpClient.PostAsync(_apiUrl, content, cancellationToken);
-        
         response.EnsureSuccessStatusCode();
-        return await StreamingResponseProcessor.ProcessAsync(response, cancellationToken, ApiProvider.Anthropic, console);
+
+        var responseContent = await response.Content.ReadAsStringAsync();
+        var anthropicResponse = JsonSerializer.Deserialize<AnthropicResponse>(responseContent, jsonOptions);
+
+        var processedResponse = new ProcessedResponse();
+
+        if (anthropicResponse?.Content != null && anthropicResponse.Content.Any())
+        {
+            var contentText = string.Join("", anthropicResponse.Content
+                .Where(c => c.Type == "text")
+                .Select(c => c.Text ?? ""));
+
+            processedResponse.Content = contentText;
+        }
+
+        // Set output tokens if available
+        if (anthropicResponse?.Usage != null)
+        {
+            processedResponse.OutputTokens = anthropicResponse.Usage.OutputTokens;
+            if (processedResponse.OutputTokens > 0)
+            {
+                console?.ShowInfo($"Output tokens used: {processedResponse.OutputTokens:N0}");
+            }
+        }
+
+        return processedResponse;
     }
+
 
     private AnthropicRequest ConvertToAnthropicRequest(List<CerebrasMessage> messages, string model)
     {
         var (anthropicMessages, systemMessage) = ConvertToAnthropicFormat(messages);
-        
+
         return new AnthropicRequest
         {
             Model = model,
             MaxTokens = 8192,
             Temperature = 0.5,
-            Stream = true,
+            Stream = false,
             Messages = anthropicMessages,
             System = systemMessage
         };
@@ -109,7 +135,7 @@ public class AnthropicApiService : IApiService
         {
             return currentModel;
         }
-        
+
         // Fallback to default Anthropic model
         return "claude-3-5-sonnet-20241022";
     }
@@ -118,5 +144,5 @@ public class AnthropicApiService : IApiService
     {
         _httpClient?.Dispose();
     }
-   
+
 }
