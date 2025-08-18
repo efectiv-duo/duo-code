@@ -54,9 +54,9 @@ public class OpenAiApiService : IApiService
         var openAIResponse = JsonConvert.DeserializeObject<OpenAIResponse>(responseJson);
 
         var contentText = openAIResponse?.Choices?.FirstOrDefault()?.Message?.Content ?? "";
-        var tokenCount = openAIResponse?.Usage?.TotalTokens ?? 0;
+        var tokenCount = openAIResponse?.Usage?.CompletionTokens ?? 0;
 
-        Console.WriteLine($"Tokeni folosiți: {tokenCount}");
+        WriteInfo($"Output: {tokenCount} tokens.");
 
         return new ProcessedResponse
         {
