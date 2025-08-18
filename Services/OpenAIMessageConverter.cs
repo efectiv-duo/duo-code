@@ -16,7 +16,7 @@ public class OpenAIMessageConvertor
             }).ToList(),
             Temperature = 0.7f,
             TopP = 1.0f,
-            MaxTokens = 4096, // Limita specifică OpenAI, poți ajusta
+            MaxTokens = 4096,
             Stream = false
         };
 

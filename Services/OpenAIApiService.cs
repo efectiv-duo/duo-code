@@ -46,7 +46,7 @@ public class OpenAiApiService : IApiService
         {
             var errorContent = await response.Content.ReadAsStringAsync();
             console?.ShowError($"OpenAI API error: {response.StatusCode}\n{errorContent}");
-            response.EnsureSuccessStatusCode(); // va arunca exceptie
+            response.EnsureSuccessStatusCode();
         }
 
         var responseJson = await response.Content.ReadAsStringAsync();

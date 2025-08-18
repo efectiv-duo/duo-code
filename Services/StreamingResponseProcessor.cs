@@ -28,7 +28,6 @@ public static class StreamingResponseProcessor
         {
             ApiProvider.Gemini => await ProcessGeminiStreamAsync(httpResponse, cancellationToken, console),
             ApiProvider.Cerebras => await ProcessCerebrasStreamAsync(httpResponse, cancellationToken, console),
-            ApiProvider.OpenAI => await ProcessOpenAiStreamAsync(httpResponse, cancellationToken, console),
             _ => await ProcessCerebrasStreamAsync(httpResponse, cancellationToken, console) // Default to Cerebras
         };
     }
@@ -151,49 +150,6 @@ public static class StreamingResponseProcessor
 
         return FinalizeResponse(responseBuilder, thinkingBuilder, currentThinkingBuilder, buffer, inThinkBlock, cancellationToken, console);
     }
-
-    private static async Task<ProcessedResponse> ProcessOpenAiStreamAsync(HttpResponseMessage httpResponse, CancellationToken cancellationToken, ConsoleInterface? console)
-    {
-        var responseBuilder = new StringBuilder();
-        var thinkingBuilder = new StringBuilder();
-        var buffer = new StringBuilder();
-        var currentThinkingBuilder = new StringBuilder();
-        bool inThinkBlock = false;
-
-        var stream = await httpResponse.Content.ReadAsStreamAsync(cancellationToken);
-        using var reader = new StreamReader(stream);
-
-        while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
-        {
-            var line = await reader.ReadLineAsync();
-            if (string.IsNullOrWhiteSpace(line) || !line.StartsWith("data: ")) continue;
-
-            var payload = line.Substring("data: ".Length).Trim();
-            if (payload == "[DONE]") break;
-
-            try
-            {
-                var chunk = JsonSerializer.Deserialize<ChatCompletionChunk>(payload, new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true
-                });
-
-                var content = chunk?.Choices?.FirstOrDefault()?.Delta?.Content;
-                if (!string.IsNullOrEmpty(content))
-                {
-                    buffer.Append(content);
-                    ProcessContentBuffer(buffer, responseBuilder, thinkingBuilder, currentThinkingBuilder, ref inThinkBlock, console);
-                }
-            }
-            catch (JsonException ex)
-            {
-                console?.ShowError($"JSON error while parsing OpenAI stream: {ex.Message}");
-            }
-        }
-
-        return FinalizeResponse(responseBuilder, thinkingBuilder, currentThinkingBuilder, buffer, inThinkBlock, cancellationToken, console);
-    }
-
 
     private static void ProcessContentBuffer(StringBuilder buffer, StringBuilder responseBuilder, StringBuilder thinkingBuilder, StringBuilder currentThinkingBuilder, ref bool inThinkBlock, ConsoleInterface? console)
     {
