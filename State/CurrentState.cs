@@ -20,6 +20,7 @@ public static class CurrentState
         {
             ApiProvider.Cerebras, new List<string>
             {
+                "gpt-oss-120b",
                 "qwen-3-coder-480b",
                 "qwen-3-235b-a22b",
                 "qwen-3-32b",
