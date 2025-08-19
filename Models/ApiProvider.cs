@@ -4,5 +4,6 @@ public enum ApiProvider
 {
     Cerebras,
     Gemini,
-    Anthropic
+    Anthropic,
+    OpenAI
 }

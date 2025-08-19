@@ -20,6 +20,7 @@ public static class CurrentState
         {
             ApiProvider.Cerebras, new List<string>
             {
+                "gpt-oss-120b",
                 "qwen-3-coder-480b",
                 "qwen-3-235b-a22b",
                 "qwen-3-32b",
@@ -34,6 +35,13 @@ public static class CurrentState
             {
                 "gemini-2.5-flash",
                 "gemini-2.5-pro"
+            }
+        },
+        {
+            ApiProvider.OpenAI, new List<string>
+            {
+                "gpt-4o",
+                "gpt-3.5-turbo"
             }
         },
         {

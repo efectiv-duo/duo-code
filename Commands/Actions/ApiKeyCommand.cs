@@ -37,7 +37,8 @@ public class ApiKeyCommand : ICommand
   /apikey show     - Show API key file locations
   
 To get a Cerebras API key, visit: https://inference.cerebras.ai/
-To get a Gemini API key, visit: https://makersuite.google.com/app/apikey");
+To get a Gemini API key, visit: https://makersuite.google.com/app/apikey
+To get a OpenAI API key, visit: https://platform.openai.com/api-keys");
 
             default:
                 return CommandResult.Error($"Unknown action: {action}. Use '/apikey help' for available actions.");
@@ -52,6 +53,7 @@ To get a Gemini API key, visit: https://makersuite.google.com/app/apikey");
             var homeDir = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
             var cerebrasKeyPath = Path.Combine(homeDir, ".cerebras_api_key");
             var geminiKeyPath = Path.Combine(homeDir, ".gemini_api_key");
+            var openaiKeyPath = Path.Combine(homeDir, ".openai_api_key");
 
             if (File.Exists(cerebrasKeyPath))
             {
@@ -63,6 +65,12 @@ To get a Gemini API key, visit: https://makersuite.google.com/app/apikey");
             {
                 File.Delete(geminiKeyPath);
                 Console.WriteLine("Gemini API key removed.");
+            }
+
+            if (File.Exists(openaiKeyPath))
+            {
+                File.Delete(openaiKeyPath);
+                Console.WriteLine("OpenAI API key removed.");
             }
 
             if (!File.Exists(cerebrasKeyPath) && !File.Exists(geminiKeyPath))
@@ -81,13 +89,16 @@ To get a Gemini API key, visit: https://makersuite.google.com/app/apikey");
         var homeDir = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         var cerebrasKeyPath = Path.Combine(homeDir, ".cerebras_api_key");
         var geminiKeyPath = Path.Combine(homeDir, ".gemini_api_key");
+        var openaiKeyPath = Path.Combine(homeDir, ".openai_api_key");
 
         Console.WriteLine("API Key Locations:");
         Console.WriteLine($"Cerebras: {cerebrasKeyPath} {(File.Exists(cerebrasKeyPath) ? "[EXISTS]" : "[NOT FOUND]")}");
         Console.WriteLine($"Gemini:   {geminiKeyPath} {(File.Exists(geminiKeyPath) ? "[EXISTS]" : "[NOT FOUND]")}");
+        Console.WriteLine($"OpenAI:   {openaiKeyPath} {(File.Exists(openaiKeyPath) ? "[EXISTS]" : "[NOT FOUND]")}");
         Console.WriteLine();
         Console.WriteLine("To get API keys:");
         Console.WriteLine("Cerebras: https://inference.cerebras.ai/");
         Console.WriteLine("Gemini:   https://makersuite.google.com/app/apikey");
+        Console.WriteLine("OpenAI:   https://platform.openai.com/api-keys");
     }
 }

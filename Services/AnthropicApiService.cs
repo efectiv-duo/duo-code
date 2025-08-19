@@ -76,7 +76,7 @@ public class AnthropicApiService : IApiService
 
         if (anthropicResponse?.Usage != null)
         {
-            processedResponse.OutputTokens = anthropicResponse.Usage.OutputTokens;
+            processedResponse.OutputTokensCount = anthropicResponse.Usage.OutputTokens;
 
             AnthropicRateLimits.DisplayCompleteUsageInfo(anthropicResponse.Usage, rateLimits, console);
         }
@@ -172,9 +172,8 @@ public class AnthropicApiService : IApiService
     {
         return LastRateLimitInfo?.GetRateLimitSummary() ?? "No rate limit data available";
     }
-      public void DisplayCurrentRateLimits()
+    public void DisplayCurrentRateLimits()
     {
         LastRateLimitInfo?.DisplayRateLimitInfo();
     }
-
 }
