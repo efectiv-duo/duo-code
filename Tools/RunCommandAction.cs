@@ -8,6 +8,7 @@ namespace duo_code.Tools;
 public class RunCommandAction : ToolActionBase
 {
     public override string ToolName => "RUN_COMMAND";
+       public override bool RequiresConfirmation => true;
     public override string Description => @"Execute a shell command.
 Format:
 RUN_COMMAND: command_to_run";

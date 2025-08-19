@@ -1,5 +1,3 @@
-using duo_code.Services.Configuration;
-using duo_code.Services.Interfaces;
 using duo_code.Commands.Core;
 using duo_code.Tools.Core;
 
@@ -14,6 +12,9 @@ namespace duo_code
 
             try
             {
+                //Directory.SetCurrentDirectory("C:\\Work\\Efectiv Duo\\clients\\helpship\\helpship.web");
+                //Directory.SetCurrentDirectory("C:\\Work\\Efectiv Duo\\projects\\duo-code\\");
+
                 // Check if running as subagent
                 var subagentPrompt = ArgumentParser.ParseSubagentPrompt(args);
 
@@ -28,7 +29,7 @@ namespace duo_code
                 var apiSettings = ApiKeyManager.LoadCurrentSettings();
                 // Load them into the state
                 CurrentState.UpdateModelAndProvider(apiSettings.Provider, apiSettings.Model);
-                
+
                 // Create agent service
                 var agentService = new AgentService(
                     commandRegistry,

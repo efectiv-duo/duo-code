@@ -8,32 +8,37 @@ namespace duo_code.Utils
         // Standard console colors for consistency
         public static void WriteInfo(string message)
         {
-            AnsiConsole.MarkupLine($"[dim]{EscapeMarkup(message)}[/]");
+            AnsiConsole.MarkupLineInterpolated($"[dim]{message}[/]");
         }
 
         public static void WriteSuccess(string message)
         {
-            AnsiConsole.MarkupLine($"[green]{EscapeMarkup(message)}[/]");
+            AnsiConsole.MarkupLineInterpolated($"[green]{message}[/]");
         }
 
         public static void WriteWarning(string message)
         {
-            AnsiConsole.MarkupLine($"[yellow]{EscapeMarkup(message)}[/]");
+            AnsiConsole.MarkupLineInterpolated($"[yellow]{message}[/]");
         }
 
         public static void WriteError(string message)
         {
-            AnsiConsole.MarkupLine($"[red]{EscapeMarkup(message)}[/]");
+            AnsiConsole.MarkupLineInterpolated($"[red]{message}[/]");
         }
 
         public static void WriteAssistantResponse(string response)
         {
-            AnsiConsole.MarkupLine($"[yellow]>[/] {response}");
+            AnsiConsole.MarkupLineInterpolated($"[yellow]>[/] {response}");
+        }
+
+        public static void WriteToolRequest(string result)
+        {
+            AnsiConsole.MarkupLineInterpolated($"[cyan]>[/] {result}");
         }
 
         public static void WriteToolResult(string result)
         {
-            AnsiConsole.MarkupLine($"[cyan]>[/] {result}");
+            AnsiConsole.MarkupLineInterpolated($"[cyan]>[/] {result}");
         }
 
         public static void ShowProgress(string description, Action action)
@@ -90,7 +95,7 @@ namespace duo_code.Utils
         }
 
         // Helper method to escape markup for Spectre.Console
-        private static string EscapeMarkup(string text)
+        public static string EscapeMarkup(string text)
         {
             return text.Replace("[", "[[").Replace("]", "]]");
         }

@@ -31,19 +31,15 @@ public class Message
             return Content;
 
         var results = Actions
-            .Where(action => action.FullResult != null)
+            .Where(action => action.ResultMessage != null)
             .Select(action => FormatToolResult(action, forSummary));
 
         return string.Join("\n\n", results);
     }
 
-    private string FormatToolResult(IToolAction action, bool forSummary)
-    {
-        var resultText = forSummary && action.SummarizedResult != null 
-            ? action.SummarizedResult 
-            : action.FullResult;
-            
-        return $"{resultText}";
+    private string? FormatToolResult(IToolAction action, bool forSummary)
+    {            
+        return action.ResultMessage;
     }
 
     /// <summary>
@@ -76,7 +72,7 @@ public class Message
     {
         // For the most recent assistant message, include thinking
         // if (distanceToHead == 0 && Thinking.Length > 0)
-            return ContentWithThinking;
+            return Content;
 
         return TruncateContent(distanceToHead, historyTotalLength);
     }

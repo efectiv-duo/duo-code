@@ -48,7 +48,7 @@ public static class ToolFactory
             int contentEndIndex = contentStartIndex;
 
             // For tools that need content, find where the next tool starts
-            if (toolType == "CREATE_FILE" || toolType == "UPDATE_FILE" || toolType == "FINISH_TASK" || toolType == "NOTES" || toolType == "SPAWN_SUBAGENT")
+            if (toolType == "CREATE_FILE" || toolType == "UPDATE_FILE" || toolType == "NOTES" || toolType == "SPAWN_SUBAGENT")
             {
                 // Find the next tool command or end of input
                 while (contentEndIndex < lines.Length)
@@ -66,44 +66,41 @@ public static class ToolFactory
             switch (toolType)
             {
                 case "CREATE_FILE":
+                    var createContent = string.Join(Environment.NewLine, lines.Skip(contentStartIndex).Take(contentEndIndex - contentStartIndex));
+                    action = new CreateFileAction { Path = args, Content = createContent, ConsoleRequestMessage = currentLine };
+                    break;
                 case "UPDATE_FILE":
-                    var content = string.Join(Environment.NewLine, lines.Skip(contentStartIndex).Take(contentEndIndex - contentStartIndex));
-                    action = toolType == "CREATE_FILE"
-                        ? new CreateFileAction { Path = args, Content = content }
-                        : new UpdateFileAction { Path = args, Content = content };
+                    var updateContent = string.Join(Environment.NewLine, lines.Skip(contentStartIndex).Take(contentEndIndex - contentStartIndex));
+                    action = new UpdateFileAction { Path = args, Content = updateContent, ConsoleRequestMessage = currentLine };
                     break;
                 case "DELETE_FILE":
-                    action = new DeleteFileAction { Path = args };
+                    action = new DeleteFileAction { Path = args, ConsoleRequestMessage = currentLine };
                     break;
                 case "CREATE_DIR":
-                    action = new CreateDirectoryAction { Path = args };
+                    action = new CreateDirectoryAction { Path = args, ConsoleRequestMessage = currentLine };
                     break;
                 case "DELETE_DIR":
-                    action = new DeleteDirectoryAction { Path = args };
+                    action = new DeleteDirectoryAction { Path = args, ConsoleRequestMessage = currentLine };
                     break;
                 case "LIST_FILES":
-                    action = ParseListFilesAction(args);
+                    action = ParseListFilesAction(args, currentLine);
                     break;
                 case "FIND":
-                    action = new FindAction { Pattern = args };
+                    action = new FindAction { Pattern = args, ConsoleRequestMessage = currentLine };
                     break;
                 case "SEARCH":
-                    action = new SearchAction { Pattern = args };
+                    action = new SearchAction { Pattern = args, ConsoleRequestMessage = currentLine };
                     break;
                 case "READ_FILE":
-                    action = ParseReadFileAction(args);
+                    action = ParseReadFileAction(args, currentLine);
                     break;
                 case "RUN_COMMAND":
-                    action = new RunCommandAction { Command = args };
-                    break;
-                case "FINISH_TASK":
-                    var message = string.Join(Environment.NewLine, lines.Skip(contentStartIndex).Take(contentEndIndex - contentStartIndex));
-                    action = new EndTurnAction { Message = message };
+                    action = new RunCommandAction { Command = args, ConsoleRequestMessage = currentLine };
                     break;
                 case "RENAME_FILE":
                     var paths = args.Split(new[] { '>' }, 2);
                     if (paths.Length != 2) throw new ArgumentException("Invalid RENAME_FILE format. Use 'old_path > new_path'");
-                    action = new RenameFileAction { OldPath = paths[0].Trim(), NewPath = paths[1].Trim() };
+                    action = new RenameFileAction { OldPath = paths[0].Trim(), NewPath = paths[1].Trim(), ConsoleRequestMessage = currentLine };
                     break;
                 case "NOTES":
                     var notes = string.Join(Environment.NewLine, lines.Skip(contentStartIndex).Take(contentEndIndex - contentStartIndex));
@@ -111,7 +108,7 @@ public static class ToolFactory
                     break;
                 case "SPAWN_SUBAGENT":
                     var prompt = string.Join(Environment.NewLine, lines.Skip(contentStartIndex).Take(contentEndIndex - contentStartIndex));
-                    action = new SpawnSubagentAction { TaskDescription = args, Prompt = prompt };
+                    action = new SpawnSubagentAction { TaskDescription = args, Prompt = prompt, ConsoleRequestMessage = currentLine };
                     break;
             }
 
@@ -122,7 +119,7 @@ public static class ToolFactory
             }
 
             // Move to the next potential tool
-            i = toolType == "CREATE_FILE" || toolType == "UPDATE_FILE" || toolType == "FINISH_TASK" || toolType == "NOTES" || toolType == "SPAWN_SUBAGENT"
+            i = toolType == "CREATE_FILE" || toolType == "UPDATE_FILE" || toolType == "NOTES" || toolType == "SPAWN_SUBAGENT"
                 ? contentEndIndex
                 : i + 1;
         }
@@ -140,45 +137,51 @@ public static class ToolFactory
         return validTools.Any(tool => line.StartsWith(tool + ":"));
     }
 
-    private static ListFilesAction ParseListFilesAction(string args)
+    private static ListFilesAction ParseListFilesAction(string args, string currentLine)
     {
         if (string.IsNullOrEmpty(args))
-            return new ListFilesAction { Path = "." };
+            return new ListFilesAction { Path = ".", ConsoleRequestMessage = currentLine };
 
-        // Check if args contains depth parameter
         var parts = args.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+        
+        if (parts.Length == 0)
+            return new ListFilesAction { Path = ".", ConsoleRequestMessage = currentLine };
 
-        if (parts.Length == 1)
+        var action = new ListFilesAction { Path = parts[0], ConsoleRequestMessage = currentLine };
+
+        // Parse additional parameters
+        for (int i = 1; i < parts.Length; i++)
         {
-            // Just a path, no depth
-            return new ListFilesAction { Path = parts[0] };
-        }
-        else if (parts.Length == 2 && parts[1].StartsWith("depth:"))
-        {
-            // Path and depth
-            var depthStr = parts[1].Substring("depth:".Length);
-            if (int.TryParse(depthStr, out int depth) && depth >= 1 && depth <= 5)
+            if (parts[i].StartsWith("depth:"))
             {
-                return new ListFilesAction { Path = parts[0], Depth = depth };
+                var depthStr = parts[i].Substring("depth:".Length);
+                if (int.TryParse(depthStr, out int depth) && depth >= 1 && depth <= 5)
+                {
+                    action.Depth = depth;
+                }
+            }
+            else if (parts[i].StartsWith("directories_only:"))
+            {
+                var dirOnlyStr = parts[i].Substring("directories_only:".Length).ToLowerInvariant();
+                action.DirectoriesOnly = dirOnlyStr == "true" || dirOnlyStr == "1" || dirOnlyStr == "yes";
             }
         }
 
-        // Default behavior if parsing fails
-        return new ListFilesAction { Path = args };
+        return action;
     }
 
-    private static ReadFileAction ParseReadFileAction(string args)
+    private static ReadFileAction ParseReadFileAction(string args, string currentLine)
     {
         if (string.IsNullOrEmpty(args))
-            return new ReadFileAction { Path = "", CompressService = _compressService };
+            return new ReadFileAction { Path = "", CompressService = _compressService, ConsoleRequestMessage = currentLine };
 
         // Parse path and optional parameters (lines and purpose)
         var parts = args.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
 
         if (parts.Length == 0)
-            return new ReadFileAction { Path = "", CompressService = _compressService };
+            return new ReadFileAction { Path = "", CompressService = _compressService, ConsoleRequestMessage = currentLine };
 
-        var action = new ReadFileAction { Path = parts[0], CompressService = _compressService };
+        var action = new ReadFileAction { Path = parts[0], CompressService = _compressService, ConsoleRequestMessage = currentLine };
 
         // Parse additional parameters
         for (int i = 1; i < parts.Length; i++)
