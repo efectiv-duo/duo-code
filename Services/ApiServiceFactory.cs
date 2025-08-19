@@ -8,6 +8,7 @@ public static class ApiServiceFactory
         {
             ApiProvider.Cerebras => new ApiService(GetOrPromptForApiKey(provider)),
             ApiProvider.Gemini => new GeminiApiService(GetOrPromptForApiKey(provider)),
+            ApiProvider.OpenAI => new OpenAiApiService(GetOrPromptForApiKey(provider)),
             _ => throw new ArgumentException($"Unsupported API provider: {provider}")
         };
     }
@@ -18,6 +19,7 @@ public static class ApiServiceFactory
         {
             ApiProvider.Cerebras => ApiKeyManager.GetApiKey(provider),
             ApiProvider.Gemini => ApiKeyManager.GetApiKey(provider),
+            ApiProvider.OpenAI => ApiKeyManager.GetApiKey(provider),
             _ => string.Empty
         };
 

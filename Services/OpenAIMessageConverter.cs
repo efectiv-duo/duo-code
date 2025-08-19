@@ -1,0 +1,39 @@
+using duo_code.Models;
+
+namespace duo_code.Services;
+
+public class OpenAIMessageConvertor
+{
+    public static OpenAIRequest ConvertToOpenAiRequest(List<CerebrasMessage> messages, string model)
+    {
+        var request = new OpenAIRequest
+        {
+            Model = model,
+            Messages = messages.Select(m => new OpenAiMessage
+            {
+                Role = ConvertRole(m.Role),
+                Content = m.Content
+            }).ToList(),
+            Temperature = 0.7f,
+            TopP = 1.0f,
+            MaxTokens = 4096,
+            Stream = false
+        };
+
+        return request;
+    }
+
+    private static string ConvertRole(string role)
+    {
+        if (string.IsNullOrWhiteSpace(role))
+            return "user";
+        
+        return role.ToLower() switch
+        {
+            "system" => "system",
+            "assistant" => "assistant",
+            "user" => "user",
+            _ => "user"
+        };
+    }
+}

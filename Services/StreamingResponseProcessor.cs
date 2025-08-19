@@ -42,6 +42,13 @@ public static class StreamingResponseProcessor
         {
             return ApiProvider.Gemini;
         }
+
+        if (contentType == "text/event-stream")
+        {
+            var serverHeader = httpResponse.Headers.Server?.ToString()?.ToLowerInvariant();
+            if (serverHeader?.Contains("openai") == true)
+                return ApiProvider.OpenAI;
+        }
         
         return ApiProvider.Cerebras; // Default
     }
@@ -155,11 +162,11 @@ public static class StreamingResponseProcessor
                 {
                     // Capture the thinking content
                     currentThinkingBuilder.Append(buffer.ToString(0, endTagIndex));
-                    
+
                     // Add to thinking collection
                     if (thinkingBuilder.Length > 0) thinkingBuilder.AppendLine();
                     thinkingBuilder.Append(currentThinkingBuilder.ToString());
-                    
+
                     ShowDoneMessage(console);
                     buffer.Remove(0, endTagIndex + "</think>".Length);
                     currentThinkingBuilder.Clear();
