@@ -110,7 +110,7 @@ public class OpenAiApiService : IApiService, IDisposable
         return new ProcessedResponse
         {
             Content = contentText,
-            TokenCount = tokenCount
+            OutputTokensCount = tokenCount
         };
     }
 
