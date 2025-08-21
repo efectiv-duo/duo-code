@@ -11,18 +11,16 @@ namespace duo_code.Services
     {
         private int _inputTokensUsed = 0;
         private int _outputTokensUsed = 0;
-        private int _totalTokensUsed = 0;
         private DateTimeOffset _windowStart = DateTimeOffset.UtcNow;
         
         public int InputTokensPerMinute { get; private set; } = 100_000;
         public int OutputTokensPerMinute { get; private set; } = 100_000;
-        public int TotalTokensPerMinute { get; private set; } = 200_000;
+
 
         public RateLimits(int inputTokensPerMinute = 100_000, int outputTokensPerMinute = 100_000)
         {
             InputTokensPerMinute = inputTokensPerMinute;
             OutputTokensPerMinute = outputTokensPerMinute;
-            TotalTokensPerMinute = inputTokensPerMinute + outputTokensPerMinute;
         }
 
         public bool CanMakeRequest(int inputTokens = 0, int outputTokens = 0)
@@ -37,11 +35,6 @@ namespace duo_code.Services
             if (outputTokens > 0 && _outputTokensUsed + outputTokens > OutputTokensPerMinute)
                 return false;
                 
-            // Check total token limit (for APIs that only have combined limits)
-            var totalTokens = inputTokens + outputTokens;
-            if (totalTokens > 0 && _totalTokensUsed + totalTokens > TotalTokensPerMinute)
-                return false;
-                
             return true;
         }
 
@@ -50,12 +43,24 @@ namespace duo_code.Services
             CleanOldData();
             Interlocked.Add(ref _inputTokensUsed, inputTokens);
             Interlocked.Add(ref _outputTokensUsed, outputTokens);
-            Interlocked.Add(ref _totalTokensUsed, inputTokens + outputTokens);
         }
 
         public void UpdateActualUsage(int actualInputTokens, int actualOutputTokens)
         {
             CleanOldData();
+            
+            // Replace estimates with actual usage
+            Interlocked.Exchange(ref _inputTokensUsed, actualInputTokens);
+            Interlocked.Exchange(ref _outputTokensUsed, actualOutputTokens);
+        }
+        
+        public void UpdateOpenAIActualUsage(int actualInputTokens, int actualOutputTokens)
+        {
+            CleanOldData();
+            
+            // For OpenAI: track individual tokens for display
+            Interlocked.Exchange(ref _inputTokensUsed, actualInputTokens);
+            Interlocked.Exchange(ref _outputTokensUsed, actualOutputTokens);
         }
 
         public void UpdateFromHeaders(HttpResponseMessage response)
@@ -66,63 +71,125 @@ namespace duo_code.Services
             int inputLimit;
             if (TryGetHeader(headers,
                 "anthropic-ratelimit-input-tokens-limit",      // Anthropic
-                "x-ratelimit-limit-tokens",                    // OpenAI (combined)
+                "x-ratelimit-limit-input-tokens",              // OpenAI input specific
+                "x-ratelimit-limit-prompt-tokens",             // OpenAI prompt tokens
+                "x-ratelimit-limit-tokens",                    // OpenAI/others combined
                 "x-ratelimit-limit-tokens-minute",             // Cerebras
-                "quota-tokens-minute", out inputLimit))
+                "x-ratelimit-limit-tpm",                       // OpenAI TPM
+                "quota-input-tokens-minute",                   // Gemini input
+                "quota-tokens-minute",                         // Gemini combined
+                out inputLimit))
                 InputTokensPerMinute = inputLimit;
                 
             int inputRemaining;
             if (TryGetHeader(headers,
                 "anthropic-ratelimit-input-tokens-remaining",  // Anthropic
-                "x-ratelimit-remaining-tokens",                // OpenAI (combined) 
+                "x-ratelimit-remaining-input-tokens",          // OpenAI input specific
+                "x-ratelimit-remaining-prompt-tokens",         // OpenAI prompt tokens
+                "x-ratelimit-remaining-tokens",                // OpenAI/others combined
                 "x-ratelimit-remaining-tokens-minute",         // Cerebras
-                "quota-tokens-remaining", out inputRemaining))
+                "x-ratelimit-remaining-tpm",                   // OpenAI TPM
+                "quota-input-tokens-remaining",                // Gemini input
+                "quota-tokens-remaining",                      // Gemini combined
+                out inputRemaining))
             {
                 var used = Math.Max(0, InputTokensPerMinute - inputRemaining);
                 Interlocked.Exchange(ref _inputTokensUsed, used);
             }
             
-            // Output token limits (mainly Anthropic)
+            // Output token limits
             int outputLimit;
             if (TryGetHeader(headers,
-                "anthropic-ratelimit-output-tokens-limit", out outputLimit))
+                "anthropic-ratelimit-output-tokens-limit",     // Anthropic
+                "x-ratelimit-limit-output-tokens",             // OpenAI output specific
+                "x-ratelimit-limit-completion-tokens",         // OpenAI completion tokens
+                "x-ratelimit-limit-tokens",                    // OpenAI/others combined fallback
+                "x-ratelimit-limit-output-tokens-minute",      // Cerebras output
+                "x-ratelimit-limit-tpm",                       // OpenAI TPM fallback
+                "quota-output-tokens-minute",                  // Gemini output
+                "quota-tokens-minute",                         // Gemini combined fallback
+                out outputLimit))
                 OutputTokensPerMinute = outputLimit;
                 
             int outputRemaining;
             if (TryGetHeader(headers,
-                "anthropic-ratelimit-output-tokens-remaining", out outputRemaining))
+                "anthropic-ratelimit-output-tokens-remaining", // Anthropic
+                "x-ratelimit-remaining-output-tokens",         // OpenAI output specific
+                "x-ratelimit-remaining-completion-tokens",     // OpenAI completion tokens
+                "x-ratelimit-remaining-tokens",                // OpenAI/others combined fallback
+                "x-ratelimit-remaining-output-tokens-minute",  // Cerebras output
+                "x-ratelimit-remaining-tpm",                   // OpenAI TPM fallback
+                "quota-output-tokens-remaining",               // Gemini output
+                "quota-tokens-remaining",                      // Gemini combined fallback
+                out outputRemaining))
             {
                 var used = Math.Max(0, OutputTokensPerMinute - outputRemaining);
                 Interlocked.Exchange(ref _outputTokensUsed, used);
             }
             
-            // Total tokens (for APIs without separate input/output)
-            int totalLimit;
+            // Handle combined tokens for APIs that don't separate input/output
+            int combinedLimit;
             if (TryGetHeader(headers,
                 "anthropic-ratelimit-tokens-limit",            // Anthropic fallback
-                "x-ratelimit-limit-tokens", out totalLimit))
+                "x-ratelimit-limit-tokens",                    // OpenAI/others combined
+                "x-ratelimit-limit-tpm",                       // OpenAI TPM
+                "quota-tokens-minute",                         // Gemini total
+                out combinedLimit))
             {
-                TotalTokensPerMinute = totalLimit;
-                // If no separate input/output limits, use total for both
-                if (InputTokensPerMinute == 100_000) InputTokensPerMinute = totalLimit;
-                if (OutputTokensPerMinute == 100_000) OutputTokensPerMinute = totalLimit;
+                // For OpenAI, if we only have combined tokens and no separate input/output limits
+                bool hasOpenAIHeaders = TryGetHeader(headers, "x-ratelimit-limit-tokens", out int _) || 
+                                       TryGetHeader(headers, "x-ratelimit-limit-tpm", out int _);
+                bool hasSeparateInputOutput = TryGetHeader(headers, "x-ratelimit-limit-input-tokens", out int _) || 
+                                            TryGetHeader(headers, "x-ratelimit-limit-output-tokens", out int _);
+                
+                if (hasOpenAIHeaders && !hasSeparateInputOutput)
+                {
+                    // For OpenAI with combined limits, set both to the same value since they share the same pool
+                    InputTokensPerMinute = combinedLimit;
+                    OutputTokensPerMinute = combinedLimit;
+                }
+                else if (InputTokensPerMinute == 100_000) 
+                {
+                    InputTokensPerMinute = combinedLimit;
+                }
+                
+                if (OutputTokensPerMinute == 100_000) 
+                {
+                    OutputTokensPerMinute = combinedLimit;
+                }
             }
             
-            int totalRemaining;
+            int combinedRemaining;
             if (TryGetHeader(headers,
                 "anthropic-ratelimit-tokens-remaining",        // Anthropic fallback  
-                "x-ratelimit-remaining-tokens", out totalRemaining))
+                "x-ratelimit-remaining-tokens",                // OpenAI/others combined
+                "x-ratelimit-remaining-tpm",                   // OpenAI TPM
+                "quota-tokens-remaining",                      // Gemini total
+                out combinedRemaining))
             {
-                var used = Math.Max(0, TotalTokensPerMinute - totalRemaining);
-                Interlocked.Exchange(ref _totalTokensUsed, used);
-                // Update individual counters if no separate tracking
-                if (_inputTokensUsed == 0 && _outputTokensUsed == 0)
+                var used = Math.Max(0, (InputTokensPerMinute == OutputTokensPerMinute ? InputTokensPerMinute : Math.Max(InputTokensPerMinute, OutputTokensPerMinute)) - combinedRemaining);
+                
+                // For OpenAI with combined tokens, set both input and output to the same remaining value
+                bool hasOpenAIHeaders = TryGetHeader(headers, "x-ratelimit-remaining-tokens", out int _) || 
+                                       TryGetHeader(headers, "x-ratelimit-remaining-tpm", out int _);
+                bool hasSeparateInputOutput = TryGetHeader(headers, "x-ratelimit-remaining-input-tokens", out int _) || 
+                                            TryGetHeader(headers, "x-ratelimit-remaining-output-tokens", out int _);
+                
+                if (hasOpenAIHeaders && !hasSeparateInputOutput)
                 {
+                    // For OpenAI, both input and output track the same pool
+                    Interlocked.Exchange(ref _inputTokensUsed, used);
+                    Interlocked.Exchange(ref _outputTokensUsed, used);
+                }
+                else if (_inputTokensUsed == 0 && _outputTokensUsed == 0)
+                {
+                    // For other APIs, split evenly
                     Interlocked.Exchange(ref _inputTokensUsed, used / 2);
                     Interlocked.Exchange(ref _outputTokensUsed, used / 2);
                 }
             }
         }
+        
         public void CheckAndShowRateLimit(int inputTokens, int outputTokens, ConsoleInterface? console)
         {
             if (!CanMakeRequest(inputTokens, outputTokens))
@@ -131,6 +198,7 @@ namespace duo_code.Services
                 ShowStatus(console);
             }
         }
+        
         public void ShowRateLimitError(HttpResponseMessage response, ConsoleInterface? console)
         {
             console?.ShowError("Rate limit exceeded by the server!");
@@ -150,11 +218,13 @@ namespace duo_code.Services
         {
             console?.ShowInfo($"Token Usage - Input: {inputTokens:N0}, Output: {outputTokens:N0}");
         }
+        
         public void ShowCurrentRateLimits(ConsoleInterface? console)
         {
             console?.ShowInfo("Current rate limits:");
             ShowStatus(console);
         }
+        
         public void ShowNoUsageInfo(ConsoleInterface? console)
         {
             console?.ShowInfo("No usage information available from API response.");
@@ -170,9 +240,8 @@ namespace duo_code.Services
             CleanOldData();
             var inputAvailable = Math.Max(0, InputTokensPerMinute - _inputTokensUsed);
             var outputAvailable = Math.Max(0, OutputTokensPerMinute - _outputTokensUsed);
-            var totalAvailable = Math.Max(0, TotalTokensPerMinute - _totalTokensUsed);
             
-            var statusMessage = $"Input: {inputAvailable:N0}/{InputTokensPerMinute:N0} | Output: {outputAvailable:N0}/{OutputTokensPerMinute:N0} | Total: {totalAvailable:N0}/{TotalTokensPerMinute:N0}";
+            var statusMessage = $"Input: {inputAvailable:N0}/{InputTokensPerMinute:N0} | Output: {outputAvailable:N0}/{OutputTokensPerMinute:N0}";
             
             if (console != null)
             {
@@ -183,6 +252,7 @@ namespace duo_code.Services
                 Console.WriteLine(statusMessage);
             }
         }
+        
         public string GetRateLimitSummary()
         {
             CleanOldData();
@@ -223,7 +293,6 @@ namespace duo_code.Services
             {
                 Interlocked.Exchange(ref _inputTokensUsed, 0);
                 Interlocked.Exchange(ref _outputTokensUsed, 0);
-                Interlocked.Exchange(ref _totalTokensUsed, 0);
                 _windowStart = DateTimeOffset.UtcNow;
             }
         }
@@ -283,7 +352,24 @@ namespace duo_code.Services
             }
             return false;
         }
+
+        private static bool TryGetHeader(System.Net.Http.Headers.HttpResponseHeaders headers, string headerName1, string headerName2, string headerName3, string headerName4, string headerName5, string headerName6, string headerName7, string headerName8, out int value)
+        {
+            value = 0;
+            string[] names = { headerName1, headerName2, headerName3, headerName4, headerName5, headerName6, headerName7, headerName8 };
+            
+            foreach (var name in names)
+            {
+                if (!string.IsNullOrEmpty(name) && headers.TryGetValues(name, out var values))
+                {
+                    if (int.TryParse(string.Join("", values), out value))
+                        return true;
+                }
+            }
+            return false;
+        }
     }
+    
     public static class RateLimiters
     {
         private static readonly ConcurrentDictionary<string, RateLimits> _limiters = new();
