@@ -12,6 +12,7 @@ namespace duo_code
 
             try
             {
+                Directory.SetCurrentDirectory("C:\\Work\\Efectiv Duo\\clients\\tms\\tms-web-ui");
                 //Directory.SetCurrentDirectory("C:\\Work\\Efectiv Duo\\clients\\helpship\\helpship.web");
                 //Directory.SetCurrentDirectory("C:\\Work\\Efectiv Duo\\projects\\duo-code\\");
 
@@ -30,8 +31,8 @@ namespace duo_code
                 // Load them into the state
                 CurrentState.UpdateModelAndProvider(apiSettings.Provider, apiSettings.Model);
 
-                // Create agent service
-                var agentService = new AgentService(
+                // Create collaborative agent service (new agentic flow)
+                var agentService = new CollaborativeAgentService(
                     commandRegistry,
                     toolRegistry,
                     responseProcessor,

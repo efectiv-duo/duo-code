@@ -22,7 +22,7 @@ namespace duo_code.Services
             Directory.CreateDirectory(_logsDirectory);
         }
 
-        public void SaveConversation(string conversation)
+        public void SaveConversation(string conversation, string prefix = "conversation")
         {
             if (conversation == null)
                 return;
@@ -30,7 +30,7 @@ namespace duo_code.Services
             try
             {
                 var timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
-                var fileName = $"conversation_{timestamp}.log";
+                var fileName = $"{prefix}_{timestamp}.log";
                 var filePath = Path.Combine(_logsDirectory, fileName);
                 
                 File.WriteAllText(filePath, conversation);
