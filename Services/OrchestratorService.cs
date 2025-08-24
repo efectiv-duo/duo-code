@@ -170,7 +170,7 @@ To Worker:
 [Task description]
 ```
 
-Continue your response to the user after Worker completes their task, incorporating their results into your strategic guidance.
+Then STOP immediately so that the Worker can respond. Incorporate their results into your strategic guidance.
 
 # Division of Responsibilities
 
@@ -203,6 +203,7 @@ Delegate whenever you need:
 Be specific about outcomes, not methods. Include:
 - The goal of the task
 - Any constraints or requirements
+- Success criteria
 - Whether you need analysis, modification, or both
 
 Examples:

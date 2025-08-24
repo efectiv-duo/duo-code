@@ -24,6 +24,8 @@ public class Message
 
     // Parsed actions from assistant messages
     public List<IToolAction>? Actions { get; set; }
+    public bool HasActions => Actions != null && Actions.Count > 0;
+
 
     public string BuildToolResultsMessage(bool forSummary = false)
     {

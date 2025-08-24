@@ -66,15 +66,16 @@ namespace duo_code.Services
                         + $"\n\nASSISTANT:\n{response.Content}";
                     _logger.SaveConversation(workerLog, "worker");
 
-                    // Add assistant response to history
+                    // Parse and check for tools
+                    var tools = ToolFactory.Parse(response.Content);
+
+                    // Add assistant response to history with tool information
                     _workerHistory.Add(new Message 
                     { 
                         Role = "assistant", 
-                        Content = response.Content 
+                        Content = response.Content,
+                        Actions = tools
                     });
-
-                    // Parse and check for tools
-                    var tools = ToolFactory.Parse(response.Content);
                     
                     if (tools.Count == 0)
                     {
@@ -89,19 +90,9 @@ namespace duo_code.Services
                     _workerHistory.Add(new Message 
                     { 
                         Role = "user", 
-                        Content = toolResults 
+                        Content = toolResults,
+                        Actions = tools
                     });
-
-                    // Keep history manageable
-                    if (_workerHistory.Count > 50)
-                    {
-                        // Keep system message and recent history
-                        var systemMessage = _workerHistory.FirstOrDefault(m => m.Role == "system");
-                        var recentHistory = _workerHistory.Skip(Math.Max(0, _workerHistory.Count - 30)).ToList();
-                        _workerHistory.Clear();
-                        if (systemMessage != null) _workerHistory.Add(systemMessage);
-                        _workerHistory.AddRange(recentHistory);
-                    }
                 }
             }
             catch (Exception ex)
@@ -148,19 +139,51 @@ namespace duo_code.Services
 
         private List<Message> BuildWorkerMessages()
         {
-            var messages = new List<Message>();
-            
-            // Add system prompt for worker
-            messages.Add(new Message 
-            { 
-                Role = "system", 
-                Content = GetWorkerSystemPrompt() 
-            });
+            var messages = new List<Message>
+            {
+                // Add system prompt for worker
+                new Message
+                {
+                    Role = "system",
+                    Content = GetWorkerSystemPrompt()
+                }
+            };
 
-            // Add all worker history
-            messages.AddRange(_workerHistory);
+            // Add worker history
+            messages.AddRange(GetRollingHistory());
 
             return messages;
+        }
+
+        private List<Message> GetRollingHistory()
+        {
+            if (_workerHistory == null || _workerHistory.Count == 0)
+                return new List<Message>();
+
+            // Find the last user message without actions
+            int cutoffIndex = _workerHistory.FindLastIndex(
+                m => m.Role == "user" && !m.HasActions);
+
+            if (cutoffIndex == -1)
+            {
+                // No user message without actions - return all messages
+                return _workerHistory;
+            }
+            else
+            {
+                var result = new List<Message>();
+
+                // Add up to 20 action messages before the cutoff
+                result.AddRange(_workerHistory
+                    .Take(cutoffIndex)
+                    .Where(m => m.HasActions)
+                    .TakeLast(50));
+
+                // Add everything from the cutoff onwards
+                result.AddRange(_workerHistory.Skip(cutoffIndex));
+
+                return result;
+            }
         }
 
         private string GetWorkerSystemPrompt()
@@ -201,7 +224,7 @@ You operate in an automatic execution loop:
 1. Receive task from Orchestrator
 2. Use tools as needed - each tool call triggers automatic execution
 3. System returns tool results immediately
-4. Continue with more tools OR provide final summary
+4. Continue with more tools to complete the orchestrator task OR provide final summary
 5. **Only your text-only response (no tools) goes back to Orchestrator**
 6. **Format tool calls on separate lines**
 7. **When using tools, respond with only tool calls - no explanations or commentary**
