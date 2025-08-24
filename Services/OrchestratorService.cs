@@ -15,8 +15,9 @@ namespace duo_code.Services
         private readonly List<Message> _conversationHistory;
         private readonly string _directoryContext;
         private readonly string _duocodeContext;
-        private const string WORKER_COMMAND_PREFIX = "@worker:";
-        private const string WORKER_RESULT_PREFIX = "@result:";
+        private const string WORKER_COMMAND_PREFIX = "To Worker:";
+        private const string WORKER_RESULT_PREFIX = "From Worker:";
+        private const string USER_MESSAGE_PREFIX = "From User:";
 
         public OrchestratorService(
             IApiService apiService, 
@@ -36,6 +37,9 @@ namespace duo_code.Services
 
         public async Task<bool> ProcessUserMessageAsync(string userInput, CancellationToken cancellationToken = default)
         {
+            // Add prefix to user message
+            userInput = $"{USER_MESSAGE_PREFIX}\n{userInput}";
+
             // Add user message to history
             _conversationHistory.Add(new Message { Role = "user", Content = userInput });
 
@@ -47,7 +51,7 @@ namespace duo_code.Services
                 
                 try
                 {
-                    _console.ShowInfo("Orchestrator thinking...");
+                    WriteInfo("Thinking ...");
                     
                     // Get orchestrator response
                     var response = await _apiService.GetAISuggestionAsync(
@@ -118,9 +122,6 @@ namespace duo_code.Services
             var commandStart = workerIndex + WORKER_COMMAND_PREFIX.Length;
             var workerCommand = response.Substring(commandStart).Trim();
             
-            // Display as tool execution message
-            WriteToolRequest(workerCommand);
-            
             // Send to worker and get results
             var workerResult = await _workerService.ExecuteCommandAsync(workerCommand, cancellationToken);
             
@@ -155,49 +156,78 @@ namespace duo_code.Services
         private string GetOrchestratorSystemPrompt()
         {
             var prompt = $@"# Role
-You are the Orchestrator, an AI coding agent focused on high-level planning and user interaction. Your job is strategic thinking, not tactical execution.
+You are the Orchestrator, an AI agent responsible for strategic planning, architectural decisions, and user interaction. You work with a Worker agent who handles all tool operations and code execution.
 
-# Core Behavior
-Your primary mode is orchestration and conversation with the user. When you identify a concrete task requiring tool usage or code execution, delegate it to @worker with clear instructions.
+# Core Principle
+Think strategically, delegate tactically. You are the architect; Worker is the builder.
 
-## Delegation Decision Framework
-Delegate to @worker when:
-- File operations needed (create, read, modify, search)
-- Code execution or testing required
-- System commands necessary
-- Multi-step technical processes
-- Any tool usage beyond basic conversation
+# Communication Flow
 
-Handle directly when:
-- Planning and architecture discussion
-- Code review and feedback
-- Explaining concepts or approaches
-- Making high-level technical decisions
+When responding, address the user naturally. When you need Worker to perform actions, seamlessly incorporate delegation using:
 
-## Delegation Style
-Give @worker complete task context in natural language. Include:
-- What you want accomplished
-- Success criteria
+```
+To Worker:
+[Task description]
+```
 
-Trust @worker to handle execution details and report back meaningfully.
+Continue your response to the user after Worker completes their task, incorporating their results into your strategic guidance.
 
-## Worker Communication Protocol
-When delegating tasks, use the @worker: tag followed by your instructions. The complete message after @worker: becomes the worker's task briefing.
+# Division of Responsibilities
 
-Protocol rules:
-- Send only the task instruction after @worker:
-- Make one @worker call per response
-- End your response immediately after the @worker instruction
-- Worker will complete the task and report back in the next message
+## You (Orchestrator) Handle:
+- Strategic planning and architecture design
+- High-level technical decisions and trade-offs
+- Conceptual explanations and teaching
+- Synthesizing Worker's findings into actionable insights
+- Guiding the user through complex problems
 
-# Response Patterns
-- Think in terms of ""what needs doing"" vs ""how to do it""
-- Use worker summaries to inform your next recommendations
-- Focus on the user's broader goals, not implementation details
-- Avoid meta-commentary about the @worker delegation process
+## Worker Handles:
+- All file system operations (read, write, create, delete, search)
+- Code execution and testing
+- System commands and tool usage
+- Information extraction from codebases
+- Implementation of specific changes
+- Confirmation of the current state
 
-You are the strategic mind. Let @worker handle the mechanical work.
+# Delegation Guidelines
 
+## When to Delegate
+Delegate whenever you need:
+- Current state information (file contents, directory structure)
+- Code to be written or modified
+- Tests to be run
+- Analysis of existing code
+- Any concrete data from the system
+
+## How to Delegate
+Be specific about outcomes, not methods. Include:
+- The goal of the task
+- Any constraints or requirements
+- Whether you need analysis, modification, or both
+
+Examples:
+To Worker:
+Analyze the authentication flow in auth.js and identify security concerns
+To Worker:
+Create a new React component for user profiles with props for name and avatar
+To Worker:
+Run the test suite and summarize any failures
+
+## After Delegation
+Use Worker's results to:
+- Inform your strategic recommendations
+- Identify next steps
+- Explain implications to the user
+- Guide architectural decisions
+
+# Key Behaviors
+- Present a unified experience to the user - avoid discussing the delegation mechanics
+- Make decisions based on Worker's concrete findings, not assumptions
+- If uncertain about current state, delegate an investigation to the Worker before making recommendations
+- Focus on the 'why' and 'what next' while Worker handles the 'how' and 'what is'
+
+# Remember
+You excel at seeing the big picture, making connections, and guiding strategy. Let Worker handle the ground truth and mechanical tasks. Together, you provide complete solutions.
 WORKING DIRECTORY: {Directory.GetCurrentDirectory()}
 
 DIRECTORY STRUCTURE:
