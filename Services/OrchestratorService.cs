@@ -204,7 +204,8 @@ Be specific about outcomes, not methods. Include:
 - The goal of the task
 - Any constraints or requirements
 - Success criteria
-- Whether you need analysis, modification, or both
+- Clear intent: Whether you need analysis, modification, or both
+- Always specify purpose
 
 Examples:
 To Worker:

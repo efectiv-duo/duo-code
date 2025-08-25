@@ -1,4 +1,4 @@
-using duo_code.Models;
+﻿using duo_code.Models;
 using duo_code.Services.Interfaces;
 using duo_code.Tools;
 using duo_code.Tools.Core;
@@ -224,7 +224,7 @@ You operate in an automatic execution loop:
 1. Receive task from Orchestrator
 2. Use tools as needed - each tool call triggers automatic execution
 3. System returns tool results immediately
-4. Continue with more tools to complete the orchestrator task OR provide final summary
+4. Continue with more tools OR provide final summary
 5. **Only your text-only response (no tools) goes back to Orchestrator**
 6. **Format tool calls on separate lines**
 7. **When using tools, respond with only tool calls - no explanations or commentary**
