@@ -3,8 +3,6 @@ using System.Text.Json;
 using System.Net;
 using duo_code.Commands.Actions;
 using duo_code.Models;
-using System.Reflection;
-
 
 namespace duo_code.Services;
 
@@ -12,85 +10,139 @@ public class AnthropicApiService : IApiService
 {
     private readonly HttpClient _httpClient;
     private readonly string _apiUrl = "https://api.anthropic.com/v1/messages";
-
-    public RateLimitInfo? LastRateLimitInfo { get; private set; }
+    private readonly duo_code.Services.RateLimits _rateLimiter;
+    private readonly string _apiKey;
+    
     public AnthropicApiService(string apiKey)
     {
+        _apiKey = apiKey;
         _httpClient = new HttpClient();
         _httpClient.DefaultRequestHeaders.Clear();
         _httpClient.DefaultRequestHeaders.Add("x-api-key", apiKey);
         _httpClient.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
-        //_httpClient.DefaultRequestHeaders.Add("content-type", "application/json");
+        
+        // Get rate limiter instance for this API key
+        _rateLimiter = duo_code.Services.RateLimiters.Get($"anthropic_{apiKey}", 100_000, 100_000);
     }
 
     public async Task<ProcessedResponse> GetAISuggestionAsync(
-    List<CerebrasMessage> messages,
-    CancellationToken cancellationToken = default,
-    string? model = null,
-    ConsoleInterface? console = null)
+        List<CerebrasMessage> messages,
+        CancellationToken cancellationToken = default,
+        string? model = null,
+        ConsoleInterface? console = null)
     {
         var targetModel = model ?? GetAnthropicModel(CurrentState.Model);
         var request = ConvertToAnthropicRequest(messages, targetModel);
 
-        var jsonOptions = new JsonSerializerOptions
+        // Estimate token usage for rate limiting check
+        var estimatedInputTokens = EstimateInputTokens(messages, request.System);
+        var estimatedOutputTokens = Math.Min(request.MaxTokens, 4000);
+
+        // Check rate limits before making request - RateLimits handles all display
+        if (!_rateLimiter.CanMakeRequest(estimatedInputTokens, estimatedOutputTokens))
         {
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
-        };
-
-        var requestJson = JsonSerializer.Serialize(request, jsonOptions);
-        var content = new StringContent(requestJson, Encoding.UTF8, "application/json");
-
-        var response = await _httpClient.PostAsync(_apiUrl, content, cancellationToken);
-
-        if (AnthropicRateLimits.IsRateLimitedResponse(response))
-        {
-            var rateLimitInfo = AnthropicRateLimits.ParseRateLimitHeaders(response);
-            LastRateLimitInfo = rateLimitInfo;
-
-            console?.ShowError("Rate limit exceeded!");
-            rateLimitInfo.DisplayRateLimitInfo();
-
-            var errorContent = await response.Content.ReadAsStringAsync();
-            throw new HttpRequestException($"Rate limit exceeded: {errorContent}");
+            _rateLimiter.CheckAndShowRateLimit(estimatedInputTokens, estimatedOutputTokens, console);
+            throw new HttpRequestException("Rate limit would be exceeded. Please wait before making another request.");
         }
 
-        response.EnsureSuccessStatusCode();
+        // Record the estimated usage
+        _rateLimiter.RecordRequest(estimatedInputTokens, estimatedOutputTokens);
 
-        var responseContent = await response.Content.ReadAsStringAsync();
-        var anthropicResponse = JsonSerializer.Deserialize<AnthropicResponse>(responseContent, jsonOptions);
-
-        var processedResponse = new ProcessedResponse();
-
-        if (anthropicResponse?.Content != null && anthropicResponse.Content.Any())
+        try
         {
-            var contentText = string.Join("", anthropicResponse.Content
-                .Where(c => c.Type == "text")
-                .Select(c => c.Text ?? ""));
+            var jsonOptions = new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+            };
 
-            processedResponse.Content = contentText;
+            var requestJson = JsonSerializer.Serialize(request, jsonOptions);
+            var content = new StringContent(requestJson, Encoding.UTF8, "application/json");
+
+            var response = await _httpClient.PostAsync(_apiUrl, content, cancellationToken);
+
+            // Check if rate limited - RateLimits handles all display
+            if (duo_code.Services.RateLimits.IsRateLimited(response))
+            {
+                _rateLimiter.ShowRateLimitError(response, console);
+                var retryAfter = duo_code.Services.RateLimits.GetRetryAfter(response);
+                var errorMessage = $"Rate limit exceeded";
+                if (retryAfter.HasValue)
+                {
+                    errorMessage += $". Retry after {retryAfter.Value} seconds";
+                }
+                var errorContent = await response.Content.ReadAsStringAsync();
+                throw new HttpRequestException($"{errorMessage}: {errorContent}");
+            }
+
+            response.EnsureSuccessStatusCode();
+
+            // Update rate limiter from response headers - RateLimits handles everything
+            _rateLimiter.UpdateFromHeaders(response);
+
+            var responseContent = await response.Content.ReadAsStringAsync();
+            var anthropicResponse = JsonSerializer.Deserialize<AnthropicResponse>(responseContent, jsonOptions);
+
+            var processedResponse = new ProcessedResponse();
+
+            if (anthropicResponse?.Content != null && anthropicResponse.Content.Any())
+            {
+                var contentText = string.Join("", anthropicResponse.Content
+                    .Where(c => c.Type == "text")
+                    .Select(c => c.Text ?? ""));
+
+                processedResponse.Content = contentText;
+            }
+
+            // Handle token usage - RateLimits handles all display and updates
+            if (anthropicResponse?.Usage != null)
+            {
+                processedResponse.OutputTokensCount = anthropicResponse.Usage.OutputTokens;
+                
+                // Update rate limiter with actual usage and let it handle display
+                _rateLimiter.UpdateActualUsage(
+                    anthropicResponse.Usage.InputTokens,
+                    anthropicResponse.Usage.OutputTokens
+                );
+
+                _rateLimiter.DisplayUsageInfo(
+                    anthropicResponse.Usage.InputTokens,
+                    anthropicResponse.Usage.OutputTokens,
+                    console
+                );
+            }
+            else
+            {
+                _rateLimiter.ShowNoUsageInfo(console);
+            }
+
+            // Show current rate limit status - RateLimits handles display
+            _rateLimiter.ShowCurrentRateLimits(console);
+
+            return processedResponse;
         }
-
-        var rateLimits = AnthropicRateLimits.ParseRateLimitHeaders(response);
-        LastRateLimitInfo = rateLimits;
-
-        if (anthropicResponse?.Usage != null)
+        catch (Exception ex)
         {
-            processedResponse.OutputTokensCount = anthropicResponse.Usage.OutputTokens;
-
-            AnthropicRateLimits.DisplayCompleteUsageInfo(anthropicResponse.Usage, rateLimits, console);
+            console?.ShowError($"API request failed: {ex.Message}");
+            throw;
         }
-        else
-        {
-            rateLimits.DisplayRateLimitInfo();
-            rateLimits.ShowLimitWarnings(console);
-        }
-
-
-        return processedResponse;
     }
-
-
+    private int EstimateInputTokens(List<CerebrasMessage> messages, string? systemMessage)
+    {
+        int totalChars = 0;
+        
+        if (!string.IsNullOrEmpty(systemMessage))
+            totalChars += systemMessage.Length;
+            
+        foreach (var message in messages)
+        {
+            if (!string.IsNullOrEmpty(message.Content))
+                totalChars += message.Content.Length;
+        }
+        
+        var estimatedTokens = (int)(totalChars / 4.0 * 1.2); // 20% overhead
+        return Math.Max(estimatedTokens, 100);
+    }
     private AnthropicRequest ConvertToAnthropicRequest(List<CerebrasMessage> messages, string model)
     {
         var (anthropicMessages, systemMessage) = ConvertToAnthropicFormat(messages);
@@ -105,7 +157,6 @@ public class AnthropicApiService : IApiService
             System = systemMessage
         };
     }
-
     private (List<AnthropicMessage> messages, string? systemMessage) ConvertToAnthropicFormat(List<CerebrasMessage> messages)
     {
         var anthropicMessages = new List<AnthropicMessage>();
@@ -115,7 +166,6 @@ public class AnthropicApiService : IApiService
         {
             if (message.Role == "system")
             {
-                // Anthropic handles system messages separately
                 if (string.IsNullOrEmpty(systemMessage))
                 {
                     systemMessage = message.Content;
@@ -134,8 +184,6 @@ public class AnthropicApiService : IApiService
                 });
             }
         }
-
-        // Ensure conversation starts with user message
         if (anthropicMessages.Count > 0 && anthropicMessages[0].Role != "user")
         {
             anthropicMessages.Insert(0, new AnthropicMessage
@@ -150,13 +198,10 @@ public class AnthropicApiService : IApiService
 
     private string GetAnthropicModel(string currentModel)
     {
-        // Use the model as-is if it's a valid Anthropic model
         if (CurrentState.AvailableModels[ApiProvider.Anthropic].Contains(currentModel))
         {
             return currentModel;
         }
-
-        // Fallback to default Anthropic model
         return "claude-3-5-sonnet-20241022";
     }
 
@@ -164,16 +209,24 @@ public class AnthropicApiService : IApiService
     {
         _httpClient?.Dispose();
     }
+
     public bool IsNearTokenLimit(int threshold = 100)
     {
-        return LastRateLimitInfo?.IsNearTokenLimit(threshold) ?? false;
+        return !_rateLimiter.CanMakeRequest(threshold, threshold);
     }
+
     public string GetRateLimitSummary()
     {
-        return LastRateLimitInfo?.GetRateLimitSummary() ?? "No rate limit data available";
+        return _rateLimiter.GetRateLimitSummary();
     }
+
     public void DisplayCurrentRateLimits()
     {
-        LastRateLimitInfo?.DisplayRateLimitInfo();
+        _rateLimiter.ShowStatus();
+    }
+
+    public duo_code.Services.RateLimits GetRateLimiter()
+    {
+        return _rateLimiter;
     }
 }
