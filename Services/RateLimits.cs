@@ -194,14 +194,14 @@ namespace duo_code.Services
         {
             if (!CanMakeRequest(inputTokens, outputTokens))
             {
-                console?.ShowError("Rate limit would be exceeded with this request!");
+                WriteInfo("Rate limit would be exceeded with this request!");
                 ShowStatus(console);
             }
         }
         
         public void ShowRateLimitError(HttpResponseMessage response, ConsoleInterface? console)
         {
-            console?.ShowError("Rate limit exceeded by the server!");
+            WriteInfo("Rate limit exceeded by the server!");
             ShowStatus(console);
 
             var retryAfter = GetRetryAfter(response);
@@ -216,18 +216,18 @@ namespace duo_code.Services
 
         public void DisplayUsageInfo(int inputTokens, int outputTokens, ConsoleInterface? console)
         {
-            console?.ShowInfo($"Token Usage - Input: {inputTokens:N0}, Output: {outputTokens:N0}");
+            WriteInfo($"Token Usage - Input: {inputTokens:N0}, Output: {outputTokens:N0}");
         }
         
         public void ShowCurrentRateLimits(ConsoleInterface? console)
         {
-            console?.ShowInfo("Current rate limits:");
+            WriteInfo("Current rate limits:");
             ShowStatus(console);
         }
         
         public void ShowNoUsageInfo(ConsoleInterface? console)
         {
-            console?.ShowInfo("No usage information available from API response.");
+            WriteInfo("No usage information available from API response.");
         }
 
         public void ShowStatus()
@@ -245,11 +245,11 @@ namespace duo_code.Services
             
             if (console != null)
             {
-                console.ShowInfo(statusMessage);
+                WriteInfo(statusMessage);
             }
             else
             {
-                Console.WriteLine(statusMessage);
+                WriteInfo(statusMessage);
             }
         }
         
