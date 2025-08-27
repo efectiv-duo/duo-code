@@ -27,10 +27,7 @@ public static class StreamingResponseProcessor
 
         var result = detectedProvider switch
         {
-            ApiProvider.Gemini => await ProcessGeminiStreamAsync(httpResponse, cancellationToken, console),
-            ApiProvider.Cerebras => await ProcessCerebrasStreamAsync(httpResponse, cancellationToken, console),
             ApiProvider.Anthropic => await ProcessAnthropicStreamAsync(httpResponse, cancellationToken, console),
-            _ => await ProcessCerebrasStreamAsync(httpResponse, cancellationToken, console) // Default to Cerebras
         };
 
         console?.ShowInfo($"Output tokens used: {result.OutputTokensCount:NO()}");
@@ -71,104 +68,6 @@ public static class StreamingResponseProcessor
 
         // Default
         return ApiProvider.Cerebras;
-    }
-
-    private static async Task<ProcessedResponse> ProcessCerebrasStreamAsync(HttpResponseMessage httpResponse, CancellationToken cancellationToken, ConsoleInterface? console)
-    {
-        var responseBuilder = new StringBuilder(); // Clean response without thinking blocks
-        var thinkingBuilder = new StringBuilder(); // All thinking content
-        var buffer = new StringBuilder();
-        var currentThinkingBuilder = new StringBuilder(); // Accumulates current thinking block
-        bool inThinkBlock = false;
-
-        var stream = await httpResponse.Content.ReadAsStreamAsync();
-        using var reader = new StreamReader(stream);
-
-        while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
-        {
-            var line = await reader.ReadLineAsync();
-            if (line == null || !line.StartsWith("data: ")) continue;
-
-            // Check for cancellation
-            cancellationToken.ThrowIfCancellationRequested();
-
-            var dataJson = line.Substring("data: ".Length).Trim();
-            if (string.IsNullOrWhiteSpace(dataJson) || dataJson.Equals("[DONE]", StringComparison.OrdinalIgnoreCase)) continue;
-
-            try
-            {
-                var chunk = JsonSerializer.Deserialize<ChatCompletionChunk>(dataJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                var contentChunk = chunk?.Choices?.FirstOrDefault()?.Delta?.Content;
-                if (contentChunk == null) continue;
-
-                buffer.Append(contentChunk);
-
-                ProcessContentBuffer(buffer, responseBuilder, thinkingBuilder, currentThinkingBuilder, ref inThinkBlock, console);
-            }
-            catch (JsonException) { /* Ignore malformed JSON chunks */ }
-        }
-
-        return FinalizeResponse(responseBuilder, thinkingBuilder, currentThinkingBuilder, buffer, inThinkBlock, cancellationToken, console);
-    }
-
-    private static async Task<ProcessedResponse> ProcessGeminiStreamAsync(HttpResponseMessage httpResponse, CancellationToken cancellationToken, ConsoleInterface? console)
-    {
-        var responseBuilder = new StringBuilder();
-        var thinkingBuilder = new StringBuilder();
-        var buffer = new StringBuilder();
-        var currentThinkingBuilder = new StringBuilder();
-        bool inThinkBlock = false;
-
-        var stream = await httpResponse.Content.ReadAsStreamAsync();
-        using var reader = new StreamReader(stream);
-
-        var jsonContent = await reader.ReadToEndAsync();
-
-        // Parse as JSON array
-        try
-        {
-            using var doc = JsonDocument.Parse(jsonContent);
-            var root = doc.RootElement;
-
-            if (root.ValueKind == JsonValueKind.Array)
-            {
-                // It's a proper JSON array
-                foreach (var element in root.EnumerateArray())
-                {
-                    ProcessGeminiJsonElement(element, buffer);
-                }
-            }
-        }
-        catch (JsonException)
-        {
-            // If it's not a valid JSON array, try parsing as comma-separated objects
-            var jsonObjects = SplitGeminiJsonObjects(jsonContent);
-
-            foreach (var jsonObj in jsonObjects)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-
-                try
-                {
-                    var cleanJson = jsonObj.Trim();
-                    if (string.IsNullOrEmpty(cleanJson)) continue;
-
-                    using var doc = JsonDocument.Parse(cleanJson);
-                    ProcessGeminiJsonElement(doc.RootElement, buffer);
-                }
-                catch (JsonException ex)
-                {
-                    // Log the error for debugging
-                    console?.ShowError($"JSON Parse Error: {ex.Message}");
-                    console?.ShowError($"JSON: {jsonObj.Substring(0, Math.Min(100, jsonObj.Length))}...");
-                }
-            }
-        }
-
-        // Process the complete buffer for thinking blocks
-        ProcessContentBuffer(buffer, responseBuilder, thinkingBuilder, currentThinkingBuilder, ref inThinkBlock, console);
-
-        return FinalizeResponse(responseBuilder, thinkingBuilder, currentThinkingBuilder, buffer, inThinkBlock, cancellationToken, console);
     }
 
     private static async Task<ProcessedResponse> ProcessAnthropicStreamAsync(HttpResponseMessage httpResponse, CancellationToken cancellationToken, ConsoleInterface? console)
