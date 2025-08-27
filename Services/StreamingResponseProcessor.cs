@@ -33,8 +33,6 @@ public static class StreamingResponseProcessor
             _ => await ProcessCerebrasStreamAsync(httpResponse, cancellationToken, console) // Default to Cerebras
         };
 
-        console?.ShowInfo($"Output tokens used: {result.OutputTokensCount:NO()}");
-
         return result;
     }
 

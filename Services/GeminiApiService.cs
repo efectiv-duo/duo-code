@@ -81,7 +81,7 @@ public class GeminiApiService : IApiService
             }
 
             var candidate = geminiResponse.Candidates.First();
-            var responseText = candidate.Content?.Parts?.FirstOrDefault()?.Text ?? string.Empty;
+            var responseText = candidate.Content?.Parts?.LastOrDefault()?.Text ?? string.Empty;
 
             // Extract usage information if available
             var actualInputTokens = geminiResponse.UsageMetadata?.PromptTokenCount ?? inputTokens;
