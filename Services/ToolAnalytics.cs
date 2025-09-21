@@ -3,16 +3,15 @@ namespace duo_code.Services;
 public static class ToolAnalytics
 {
     private static readonly string StatsFilePath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-        ".duocode",
-        "tool_usage_stats.txt"
+        Constants.GlobalConfigDirectory,
+        "tool_usage_stats.json"
     );
 
     public static string StatsFilePathTxt => Path.ChangeExtension(StatsFilePath, ".txt");
 
     static ToolAnalytics()
     {
-        // Ensure the .duocode directory exists
+        // Ensure the config directory exists
         var directory = Path.GetDirectoryName(StatsFilePath);
         if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
         {

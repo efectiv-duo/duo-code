@@ -5,6 +5,7 @@ namespace duo_code.Tools;
 public class DeleteFileAction : ToolActionBase
 {
     public override string ToolName => "DELETE_FILE";
+       public override bool RequiresConfirmation => true;
     public override string Description => @"Delete a file.
 Format:
 DELETE_FILE: file_path";

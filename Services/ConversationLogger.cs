@@ -22,7 +22,7 @@ namespace duo_code.Services
             Directory.CreateDirectory(_logsDirectory);
         }
 
-        public void SaveConversation(object conversation)
+        public void SaveConversation(string conversation)
         {
             if (conversation == null)
                 return;
@@ -30,15 +30,10 @@ namespace duo_code.Services
             try
             {
                 var timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
-                var fileName = $"conversation_{timestamp}.json";
+                var fileName = $"conversation_{timestamp}.log";
                 var filePath = Path.Combine(_logsDirectory, fileName);
-
-                var json = JsonSerializer.Serialize(conversation, new JsonSerializerOptions 
-                { 
-                    WriteIndented = true 
-                });
                 
-                File.WriteAllText(filePath, json);
+                File.WriteAllText(filePath, conversation);
             }
             catch (Exception ex)
             {

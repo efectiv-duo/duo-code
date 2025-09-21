@@ -6,8 +6,10 @@ public static class ApiServiceFactory
     {
         return provider switch
         {
-            ApiProvider.Cerebras => new CerebrasApiService(GetOrPromptForApiKey(provider)),
+            ApiProvider.Cerebras => new ApiService(GetOrPromptForApiKey(provider)),
             ApiProvider.Gemini => new GeminiApiService(GetOrPromptForApiKey(provider)),
+            ApiProvider.Anthropic => new AnthropicApiService(GetOrPromptForApiKey(provider)),
+            ApiProvider.OpenAI => new OpenAiApiService(GetOrPromptForApiKey(provider)),
             _ => throw new ArgumentException($"Unsupported API provider: {provider}")
         };
     }
@@ -16,22 +18,22 @@ public static class ApiServiceFactory
     {
         string apiKey = provider switch
         {
-            ApiProvider.Cerebras => ApiKeyManager.GetCerebrasApiKey(),
-            ApiProvider.Gemini => ApiKeyManager.GetGeminiApiKey(),
+            ApiProvider.Cerebras => ApiKeyManager.GetApiKey(provider),
+            ApiProvider.Gemini => ApiKeyManager.GetApiKey(provider),
+            ApiProvider.OpenAI => ApiKeyManager.GetApiKey(provider),
+            ApiProvider.Anthropic => ApiKeyManager.GetApiKey(provider),
             _ => string.Empty
         };
 
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            Console.ForegroundColor = ConsoleColor.Yellow;
-            Console.WriteLine($"Please enter your {provider} API key:");
-            Console.ResetColor();
+            WriteWarning($"Please enter your {provider} API key:");
             
             apiKey = Console.ReadLine()?.Trim() ?? string.Empty;
             
             if (!string.IsNullOrWhiteSpace(apiKey))
             {
-                SaveApiKey(provider, apiKey);
+                ApiKeyManager.SaveApiKey(apiKey, provider);
             }
             else
             {
@@ -40,30 +42,5 @@ public static class ApiServiceFactory
         }
 
         return apiKey;
-    }
-
-    private static void SaveApiKey(ApiProvider provider, string apiKey)
-    {
-        try
-        {
-            string homeDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-            string filePath = provider switch
-            {
-                ApiProvider.Cerebras => Path.Combine(homeDirectory, ".cerebras_api_key"),
-                ApiProvider.Gemini => Path.Combine(homeDirectory, ".gemini_api_key"),
-                _ => throw new ArgumentException($"Unsupported provider: {provider}")
-            };
-            
-            File.WriteAllText(filePath, apiKey);
-            Console.ForegroundColor = ConsoleColor.Green;
-            Console.WriteLine($"{provider} API key saved successfully.");
-            Console.ResetColor();
-        }
-        catch (Exception ex)
-        {
-            Console.ForegroundColor = ConsoleColor.Yellow;
-            Console.WriteLine($"Warning: Could not save {provider} API key: {ex.Message}");
-            Console.ResetColor();
-        }
     }
 }

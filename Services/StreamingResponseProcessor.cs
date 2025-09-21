@@ -1,5 +1,6 @@
 ﻿using System.Text;
 using System.Text.Json;
+using System.Xml.XPath;
 using duo_code.Models;
 
 namespace duo_code.Services;
@@ -17,41 +18,66 @@ public static class StreamingResponseProcessor
     /// <param name="httpResponse">The HttpResponseMessage from the API.</param>
     /// <param name="cancellationToken">Token to cancel the operation.</param>
     /// <param name="provider">The API provider to determine parsing format.</param>
+    /// <param name="console">Console interface for displaying messages.</param>
     /// <returns>ProcessedResponse containing the response and thinking content.</returns>
-    public static async Task<ProcessedResponse> ProcessAsync(HttpResponseMessage httpResponse, CancellationToken cancellationToken = default, ApiProvider? provider = null)
+    public static async Task<ProcessedResponse> ProcessAsync(HttpResponseMessage httpResponse, CancellationToken cancellationToken = default, ApiProvider? provider = null, ConsoleInterface? console = null)
     {
         // Auto-detect provider if not specified
         var detectedProvider = provider ?? DetectProvider(httpResponse);
-        
-        return detectedProvider switch
+
+        var result = detectedProvider switch
         {
-            ApiProvider.Gemini => await ProcessGeminiStreamAsync(httpResponse, cancellationToken),
-            ApiProvider.Cerebras => await ProcessCerebrasStreamAsync(httpResponse, cancellationToken),
-            _ => await ProcessCerebrasStreamAsync(httpResponse, cancellationToken) // Default to Cerebras
+            ApiProvider.Anthropic => await ProcessAnthropicStreamAsync(httpResponse, cancellationToken, console),
         };
+
+        console?.ShowInfo($"Output tokens used: {result.OutputTokensCount:NO()}");
+
+        return result;
     }
 
     private static ApiProvider DetectProvider(HttpResponseMessage httpResponse)
     {
-        // Try to detect based on response headers or URL
+        // Check request URL first (most reliable)
+        var requestUri = httpResponse.RequestMessage?.RequestUri?.ToString();
+        if (requestUri != null)
+        {
+            if (requestUri.Contains("anthropic.com"))
+                return ApiProvider.Anthropic;
+            if (requestUri.Contains("generativelanguage.googleapis.com"))
+                return ApiProvider.Gemini;
+            if (requestUri.Contains("cerebras") || requestUri.Contains("inference.cerebras.ai"))
+                return ApiProvider.Cerebras;
+        }
+
+        // Check response headers
+        var serverHeader = httpResponse.Headers.Server?.ToString();
+        if (!string.IsNullOrEmpty(serverHeader))
+        {
+            if (serverHeader.Contains("anthropic", StringComparison.OrdinalIgnoreCase))
+                return ApiProvider.Anthropic;
+            if (serverHeader.Contains("google", StringComparison.OrdinalIgnoreCase))
+                return ApiProvider.Gemini;
+        }
+
+        // Fallback to content type
         var contentType = httpResponse.Content.Headers.ContentType?.MediaType;
-        
-        // Gemini typically returns application/json, Cerebras returns text/plain for SSE
         if (contentType == "application/json")
         {
             return ApiProvider.Gemini;
         }
-        
-        return ApiProvider.Cerebras; // Default
+
+        // Default
+        return ApiProvider.Cerebras;
     }
 
-    private static async Task<ProcessedResponse> ProcessCerebrasStreamAsync(HttpResponseMessage httpResponse, CancellationToken cancellationToken)
+    private static async Task<ProcessedResponse> ProcessAnthropicStreamAsync(HttpResponseMessage httpResponse, CancellationToken cancellationToken, ConsoleInterface? console)
     {
-        var responseBuilder = new StringBuilder(); // Clean response without thinking blocks
-        var thinkingBuilder = new StringBuilder(); // All thinking content
+        var responseBuilder = new StringBuilder();
+        var thinkingBuilder = new StringBuilder();
         var buffer = new StringBuilder();
-        var currentThinkingBuilder = new StringBuilder(); // Accumulates current thinking block
+        var currentThinkingBuilder = new StringBuilder();
         bool inThinkBlock = false;
+        int outputTokens = 0;
 
         var stream = await httpResponse.Content.ReadAsStreamAsync();
         using var reader = new StreamReader(stream);
@@ -59,91 +85,70 @@ public static class StreamingResponseProcessor
         while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
         {
             var line = await reader.ReadLineAsync();
-            if (line == null || !line.StartsWith("data: ")) continue;
-            
-            // Check for cancellation
+            if (line == null) continue;
+
             cancellationToken.ThrowIfCancellationRequested();
 
-            var dataJson = line.Substring("data: ".Length).Trim();
-            if (string.IsNullOrWhiteSpace(dataJson) || dataJson.Equals("[DONE]", StringComparison.OrdinalIgnoreCase)) continue;
-
-            try
+            if (line.StartsWith("data: "))
             {
-                var chunk = JsonSerializer.Deserialize<ChatCompletionChunk>(dataJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                var contentChunk = chunk?.Choices?.FirstOrDefault()?.Delta?.Content;
-                if (contentChunk == null) continue;
+                var jsonData = line.Substring(6);
 
-                buffer.Append(contentChunk);
+                if (jsonData == "[DONE]") break;
 
-                ProcessContentBuffer(buffer, responseBuilder, thinkingBuilder, currentThinkingBuilder, ref inThinkBlock);
-            }
-            catch (JsonException) { /* Ignore malformed JSON chunks */ }
-        }
-
-        return FinalizeResponse(responseBuilder, thinkingBuilder, currentThinkingBuilder, buffer, inThinkBlock, cancellationToken);
-    }
-
-    private static async Task<ProcessedResponse> ProcessGeminiStreamAsync(HttpResponseMessage httpResponse, CancellationToken cancellationToken)
-    {
-        var responseBuilder = new StringBuilder();
-        var thinkingBuilder = new StringBuilder();
-        var buffer = new StringBuilder();
-        var currentThinkingBuilder = new StringBuilder();
-        bool inThinkBlock = false;
-
-        var stream = await httpResponse.Content.ReadAsStreamAsync();
-        using var reader = new StreamReader(stream);
-        
-        var jsonContent = await reader.ReadToEndAsync();
-        
-        // Parse as JSON array
-        try
-        {
-            using var doc = JsonDocument.Parse(jsonContent);
-            var root = doc.RootElement;
-            
-            if (root.ValueKind == JsonValueKind.Array)
-            {
-                // It's a proper JSON array
-                foreach (var element in root.EnumerateArray())
-                {
-                    ProcessGeminiJsonElement(element, buffer);
-                }
-            }
-        }
-        catch (JsonException)
-        {
-            // If it's not a valid JSON array, try parsing as comma-separated objects
-            var jsonObjects = SplitGeminiJsonObjects(jsonContent);
-        
-            foreach (var jsonObj in jsonObjects)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                
                 try
                 {
-                    var cleanJson = jsonObj.Trim();
-                    if (string.IsNullOrEmpty(cleanJson)) continue;
-                    
-                    using var doc = JsonDocument.Parse(cleanJson);
-                    ProcessGeminiJsonElement(doc.RootElement, buffer);
+                    using var doc = JsonDocument.Parse(jsonData);
+                    var root = doc.RootElement;
+
+                    // Handle different event types from Anthropic
+                    if (root.TryGetProperty("type", out var typeElement))
+                    {
+                        var eventType = typeElement.GetString();
+
+                        switch (eventType)
+                        {
+                            case "content_block_delta":
+                                if (root.TryGetProperty("delta", out var delta) &&
+                                    delta.TryGetProperty("text", out var textElement))
+                                {
+                                    var contentChunk = textElement.GetString();
+                                    if (!string.IsNullOrEmpty(contentChunk))
+                                    {
+                                        buffer.Append(contentChunk);
+                                        ProcessContentBuffer(buffer, responseBuilder, thinkingBuilder, currentThinkingBuilder, ref inThinkBlock, console);
+                                    }
+                                }
+                                break;
+
+                            case "message_delta":
+                                if (root.TryGetProperty("delta", out var deltaUsage) &&
+                                    deltaUsage.TryGetProperty("usage", out var usage))
+                                {
+                                    if (usage.TryGetProperty("output_tokens", out var outputTokensElement))
+                                    {
+                                        outputTokens = outputTokensElement.GetInt32();
+                                    }
+                                }
+                                break;
+                        }
+                    }
                 }
-                catch (JsonException ex) 
-                { 
-                    // Log the error for debugging
-                    Console.WriteLine($"\nJSON Parse Error: {ex.Message}");
-                    Console.WriteLine($"JSON: {jsonObj.Substring(0, Math.Min(100, jsonObj.Length))}...");
+                catch (JsonException)
+                {
+                    continue;
                 }
             }
         }
-        
-        // Process the complete buffer for thinking blocks
-        ProcessContentBuffer(buffer, responseBuilder, thinkingBuilder, currentThinkingBuilder, ref inThinkBlock);
 
-        return FinalizeResponse(responseBuilder, thinkingBuilder, currentThinkingBuilder, buffer, inThinkBlock, cancellationToken);
+        var result = FinalizeResponse(responseBuilder, thinkingBuilder, currentThinkingBuilder, buffer, inThinkBlock, cancellationToken, console);
+        if (outputTokens > 0)
+        {
+            result.OutputTokensCount = outputTokens;
+        }
+        return result;
     }
 
-    private static void ProcessContentBuffer(StringBuilder buffer, StringBuilder responseBuilder, StringBuilder thinkingBuilder, StringBuilder currentThinkingBuilder, ref bool inThinkBlock)
+    private static void ProcessContentBuffer(StringBuilder buffer, StringBuilder responseBuilder, StringBuilder thinkingBuilder, StringBuilder currentThinkingBuilder, ref bool inThinkBlock, ConsoleInterface? console)
     {
         while (true) // Process the buffer repeatedly until no more tags can be found
         {
@@ -154,12 +159,12 @@ public static class StreamingResponseProcessor
                 {
                     // Capture the thinking content
                     currentThinkingBuilder.Append(buffer.ToString(0, endTagIndex));
-                    
+
                     // Add to thinking collection
                     if (thinkingBuilder.Length > 0) thinkingBuilder.AppendLine();
                     thinkingBuilder.Append(currentThinkingBuilder.ToString());
-                    
-                    ShowDoneMessage();
+
+                    ShowDoneMessage(console);
                     buffer.Remove(0, endTagIndex + "</think>".Length);
                     currentThinkingBuilder.Clear();
                     inThinkBlock = false;
@@ -182,7 +187,7 @@ public static class StreamingResponseProcessor
                     responseBuilder.Append(preThoughtText);
 
                     buffer.Remove(0, startTagIndex + "<think>".Length);
-                    ShowThinkingMessage();
+                    ShowThinkingMessage(console);
                     inThinkBlock = true;
                     continue; // Re-process the buffer
                 }
@@ -194,17 +199,15 @@ public static class StreamingResponseProcessor
         }
     }
 
-    private static ProcessedResponse FinalizeResponse(StringBuilder responseBuilder, StringBuilder thinkingBuilder, StringBuilder currentThinkingBuilder, StringBuilder buffer, bool inThinkBlock, CancellationToken cancellationToken)
+    private static ProcessedResponse FinalizeResponse(StringBuilder responseBuilder, StringBuilder thinkingBuilder, StringBuilder currentThinkingBuilder, StringBuilder buffer, bool inThinkBlock, CancellationToken cancellationToken, ConsoleInterface? console)
     {
         // Check if we were cancelled
         if (cancellationToken.IsCancellationRequested)
         {
-            Console.ForegroundColor = ConsoleColor.Yellow;
-            Console.WriteLine("\n[Processing cancelled]");
-            Console.ResetColor();
+            console?.ShowInfo("\n[Processing cancelled]");
             throw new OperationCanceledException();
         }
-        
+
         // After the loop, handle any remaining content
         if (!inThinkBlock && buffer.Length > 0)
         {
@@ -226,16 +229,14 @@ public static class StreamingResponseProcessor
         };
     }
 
-    private static void ShowThinkingMessage()
+    private static void ShowThinkingMessage(ConsoleInterface? console)
     {
-        Console.WriteLine(); // Start on a new line
-        Console.Write("Thinking...");
+        console?.ShowThinking();
     }
 
-    private static void ShowDoneMessage()
+    private static void ShowDoneMessage(ConsoleInterface? console)
     {
-        Console.WriteLine();
-        Console.Write("Done thinking.\n"); 
+        console?.ClearThinking();
     }
 
     private static void ProcessGeminiJsonElement(JsonElement element, StringBuilder buffer)
@@ -243,16 +244,35 @@ public static class StreamingResponseProcessor
         if (element.TryGetProperty("candidates", out var candidates) && candidates.GetArrayLength() > 0)
         {
             var candidate = candidates[0];
-            if (candidate.TryGetProperty("content", out var content) && 
+            if (candidate.TryGetProperty("content", out var content) &&
                 content.TryGetProperty("parts", out var parts) && parts.GetArrayLength() > 0)
             {
-                var part = parts[0];
-                if (part.TryGetProperty("text", out var text))
+                foreach (var part in parts.EnumerateArray())
                 {
-                    var contentChunk = text.GetString();
-                    if (!string.IsNullOrEmpty(contentChunk))
+                    // Check if this is a thought part
+                    bool isThought = false;
+                    if (part.TryGetProperty("thought", out var thoughtProp))
                     {
-                        buffer.Append(contentChunk);
+                        isThought = thoughtProp.GetBoolean();
+                    }
+                    
+                    if (part.TryGetProperty("text", out var text))
+                    {
+                        var contentChunk = text.GetString();
+                        if (!string.IsNullOrEmpty(contentChunk))
+                        {
+                            // Wrap thought content in think tags for consistent processing
+                            if (isThought)
+                            {
+                                buffer.Append("<think>");
+                                buffer.Append(contentChunk);
+                                buffer.Append("</think>");
+                            }
+                            else
+                            {
+                                buffer.Append(contentChunk);
+                            }
+                        }
                     }
                 }
             }
@@ -263,39 +283,39 @@ public static class StreamingResponseProcessor
     {
         var jsonObjects = new List<string>();
         var cleanContent = jsonContent.Trim();
-        
+
         // Remove outer brackets if present
         if (cleanContent.StartsWith('[')) cleanContent = cleanContent.Substring(1);
         if (cleanContent.EndsWith(']')) cleanContent = cleanContent.Substring(0, cleanContent.Length - 1);
-        
+
         var currentObject = new StringBuilder();
         int braceCount = 0;
         bool inString = false;
         bool escapeNext = false;
-        
+
         for (int i = 0; i < cleanContent.Length; i++)
         {
             char c = cleanContent[i];
-            
+
             if (escapeNext)
             {
                 escapeNext = false;
                 currentObject.Append(c);
                 continue;
             }
-            
+
             if (c == '\\')
             {
                 escapeNext = true;
                 currentObject.Append(c);
                 continue;
             }
-            
+
             if (c == '"')
             {
                 inString = !inString;
             }
-            
+
             if (!inString)
             {
                 if (c == '{')
@@ -307,9 +327,9 @@ public static class StreamingResponseProcessor
                     braceCount--;
                 }
             }
-            
+
             currentObject.Append(c);
-            
+
             // When we complete an object and hit a comma
             if (!inString && braceCount == 0 && c == ',' && currentObject.Length > 1)
             {
@@ -321,7 +341,7 @@ public static class StreamingResponseProcessor
                 currentObject.Clear();
             }
         }
-        
+
         // Add the last object
         if (currentObject.Length > 0)
         {
@@ -331,7 +351,7 @@ public static class StreamingResponseProcessor
                 jsonObjects.Add(objStr);
             }
         }
-        
+
         return jsonObjects;
     }
 }

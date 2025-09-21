@@ -4,7 +4,7 @@ namespace duo_code.Services;
 
 public class CompressCodeService
 {
-    private readonly CerebrasApiService _apiService;
+    private readonly ApiService _apiService;
     private const string CompressionPrompt = @"You are an AI code analyzer. Your task is to distill source code into a highly condensed, machine-readable structural summary. The output must be in a minimal YAML format.
 
 **Schema & Rules:**
@@ -21,7 +21,7 @@ public class CompressCodeService
 
 **CRITICAL:** Do not include the original code, implementation logic, comments, or any conversational text. The output must be pure, structured data representing the code's architecture.";
     
-    public CompressCodeService(CerebrasApiService apiService)
+    public CompressCodeService(ApiService apiService)
     {
         _apiService = apiService;
     }

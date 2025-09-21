@@ -1,143 +1,284 @@
-using System.Text;
 using duo_code.Tools.Core;
+using System.Text;
 
 namespace duo_code.Tools;
 
 public class ListFilesAction : ToolActionBase
 {
     public override string ToolName => "LIST_FILES";
-    public override string Description => @"List directory contents. Optional depth (default 1, max 5)
+    public override string Description => @"List directory contents with metadata. Optional depth (default 1, max 5) and directories_only flag
 Format:
-LIST_FILES: path depth:N";
-    
+LIST_FILES: path depth:N directories_only:true/false";
+
     public string Path { get; set; } = string.Empty;
     public int Depth { get; set; } = 1;
-    
-    
+    public bool DirectoriesOnly { get; set; } = false;
+
+    private const int MaxDepth = 5;
+    private const int MaxFiles = 10000;
+    private const long MaxTotalSize = 1L * 1024 * 1024 * 1024; // 1GB
+
+    private int _fileCount;
+    private long _totalSize;
+
     protected override string ExecuteCore(string baseDirectory)
     {
-        var fullPath = ResolvePath(baseDirectory, Path);
-        if (!Directory.Exists(fullPath)) throw new DirectoryNotFoundException($"Directory not found: {Path}");
+        if (string.IsNullOrWhiteSpace(Path))
+            Path = ".";
 
-        var output = new StringBuilder();
-        output.AppendLine($"Executed LIST_FILES: {Path} (depth={Depth})");
-        
-        var rootDir = new DirectoryInfo(fullPath);
-        var allItems = new List<string>();
-        
-        // Collect all items with their relative paths
-        CollectItems(rootDir, Path, allItems, 0, Depth);
-        
-        // Sort and output
-        allItems.Sort();
-        foreach (var item in allItems)
+        if (Depth < 1)
+            return "Error: Depth must be at least 1";
+
+        if (Depth > MaxDepth)
+            return $"Error: Depth cannot exceed {MaxDepth}";
+
+        var fullPath = ResolvePath(baseDirectory, Path);
+
+        if (!Directory.Exists(fullPath))
+            return $"Error: Directory not found: {Path}";
+
+        try
         {
-            output.AppendLine(item);
+            var output = new StringBuilder();
+            output.AppendLine($"LISTING: {Path} depth: {Depth}");
+            output.AppendLine($"[META] Base: {fullPath}");
+            output.AppendLine();
+
+            _fileCount = 0;
+            _totalSize = 0;
+
+            var rootDir = new DirectoryInfo(fullPath);
+            var filesByDirectory = new Dictionary<string, List<(string name, long size, DateTime modified)>>();
+            var directoriesInfo = new Dictionary<string, (int fileCount, int dirCount)>();
+            var extensionsByDirectory = new Dictionary<string, Dictionary<string, int>>();
+
+            CollectItemsGrouped(rootDir, "", filesByDirectory, directoriesInfo, extensionsByDirectory, 0, Depth);
+
+            if (_fileCount >= MaxFiles || _totalSize >= MaxTotalSize)
+            {
+                output.AppendLine($"[WARNING] Output truncated: {_fileCount} files, {FormatSize(_totalSize)}");
+                output.AppendLine();
+            }
+
+            var sortedPaths = filesByDirectory.Keys.OrderBy(k => k, StringComparer.Ordinal).ToList();
+
+            foreach (var dirPath in sortedPaths)
+            {
+                var files = filesByDirectory[dirPath];
+                var displayPath = string.IsNullOrEmpty(dirPath) ? "ROOT" : dirPath;
+
+                var header = $"[{displayPath}: {files.Count} files";
+                if (directoriesInfo.ContainsKey(dirPath))
+                {
+                    var (_, dirCount) = directoriesInfo[dirPath];
+                    if (dirCount > 0)
+                        header += $", {dirCount} dirs";
+                }
+
+                if (DirectoriesOnly && extensionsByDirectory.ContainsKey(dirPath) && extensionsByDirectory[dirPath].Count > 0)
+                {
+                    var extensions = extensionsByDirectory[dirPath]
+                        .OrderByDescending(kvp => kvp.Value)
+                        .ThenBy(kvp => kvp.Key)
+                        .Select(kvp => $"{kvp.Key}:{kvp.Value}");
+                    header += $"] {{{string.Join(", ", extensions)}}}";
+                }
+                else
+                {
+                    header += "]";
+                }
+
+                output.AppendLine(header);
+
+                if (!DirectoriesOnly)
+                {
+                    foreach (var (name, size, modified) in files.OrderBy(f => f.name, StringComparer.Ordinal))
+                    {
+                        output.AppendLine($"{name} [{FormatSize(size)}] [{GetActivityMarker(modified)}]");
+                    }
+                }
+
+                output.AppendLine();
+            }
+
+            output.AppendLine("[SUMMARY]");
+            var totalDirs = directoriesInfo.Values.Sum(v => v.dirCount);
+            output.AppendLine($"Total listed: {_fileCount} files, {totalDirs} directories ({FormatSize(_totalSize)})");
+
+            ConsoleResultMessage = $"Listed {totalDirs} dirs, {_fileCount} files ({FormatSize(_totalSize)})";
+
+            return output.ToString();
         }
-        
-        // Count summary
-        var dirCount = allItems.Count(i => i.EndsWith("/"));
-        var fileCount = allItems.Count - dirCount;
-        output.AppendLine($"\nTotal: {dirCount} dirs, {fileCount} files");
-        
-        return output.ToString();
-    }
-    
-    private void CollectItems(DirectoryInfo dir, string relativePath, List<string> items, int currentDepth, int maxDepth)
-    {
-        // Get directories and files
-        var directories = dir.GetDirectories()
-            .Where(d => !ShouldIgnoreDirectory(d, relativePath))
-            .OrderBy(d => d.Name);
-            
-        var files = dir.GetFiles()
-            .Where(f => !ShouldIgnoreFile(f, relativePath))
-            .OrderBy(f => f.Name);
-        
-        // Add directories
-        foreach (var subDir in directories)
+        catch (UnauthorizedAccessException)
         {
-            var dirPath = string.IsNullOrEmpty(relativePath) ? subDir.Name : $"{relativePath}/{subDir.Name}";
-            items.Add(dirPath + "/");
-            
-            // Recurse if we haven't reached max depth
+            return $"Error: Access denied to directory: {Path}";
+        }
+        catch (Exception ex)
+        {
+            return $"Error listing directory: {ex.Message}";
+        }
+    }
+
+    private void CollectItemsGrouped(
+        DirectoryInfo dir,
+        string relativePath,
+        Dictionary<string, List<(string name, long size, DateTime modified)>> filesByDirectory,
+        Dictionary<string, (int fileCount, int dirCount)> directoriesInfo,
+        Dictionary<string, Dictionary<string, int>> extensionsByDirectory,
+        int currentDepth,
+        int maxDepth)
+    {
+        if (_fileCount >= MaxFiles || _totalSize >= MaxTotalSize) return;
+
+        try
+        {
+            var directories = dir.GetDirectories()
+                .Where(d => !ShouldIgnoreDirectory(d))
+                .OrderBy(d => d.Name)
+                .ToList();
+
+            var fileInfos = dir.GetFiles()
+                .Where(f => !ShouldIgnoreFile(f))
+                .OrderBy(f => f.Name)
+                .ToList();
+
+            if (fileInfos.Count > 0 || currentDepth == 0)
+            {
+                filesByDirectory[relativePath] = new List<(string, long, DateTime)>();
+                extensionsByDirectory[relativePath] = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+                foreach (var file in fileInfos)
+                {
+                    if (_fileCount >= MaxFiles || _totalSize >= MaxTotalSize) break;
+
+                    _fileCount++;
+                    _totalSize += file.Length;
+                    filesByDirectory[relativePath].Add((file.Name, file.Length, file.LastWriteTime));
+
+                    var extension = GetFileExtensionOrType(file.Name);
+                    extensionsByDirectory[relativePath].TryGetValue(extension, out var count);
+                    extensionsByDirectory[relativePath][extension] = count + 1;
+                }
+            }
+
+            directoriesInfo.TryGetValue(relativePath, out var dirInfo);
+            directoriesInfo[relativePath] = (dirInfo.fileCount + fileInfos.Count, dirInfo.dirCount + directories.Count);
+
             if (currentDepth < maxDepth - 1)
             {
-                CollectItems(subDir, dirPath, items, currentDepth + 1, maxDepth);
+                foreach (var subDir in directories)
+                {
+                    if (_fileCount >= MaxFiles || _totalSize >= MaxTotalSize) break;
+
+                    var dirPath = BuildPath(relativePath, subDir.Name);
+                    CollectItemsGrouped(subDir, dirPath, filesByDirectory, directoriesInfo, extensionsByDirectory, currentDepth + 1, maxDepth);
+                }
             }
         }
-        
-        // Add files
-        foreach (var file in files)
+        catch (UnauthorizedAccessException)
         {
-            var filePath = string.IsNullOrEmpty(relativePath) ? file.Name : $"{relativePath}/{file.Name}";
-            items.Add(filePath);
+            filesByDirectory.TryAdd(relativePath, new List<(string, long, DateTime)>());
+            filesByDirectory[relativePath].Add(("[Access Denied]", 0, DateTime.MinValue));
+        }
+        catch
+        {
+            // Silently ignore other errors in subdirectories
         }
     }
-    
-    private bool ShouldIgnoreDirectory(DirectoryInfo dir, string relativePath)
+
+    private static bool IsIgnored(FileSystemInfo info)
     {
-        // Always ignore .git and other dot directories
-        if (dir.Name.StartsWith('.')) return true;
-        
-        var fullPath = dir.FullName;
-        var baseDir = GetBaseDirectory(fullPath, relativePath, dir.Name);
-        return GitignoreUtils.ShouldIgnoreFile(fullPath, baseDir);
+        return info switch
+        {
+            DirectoryInfo dir => ShouldIgnoreDirectory(dir),
+            FileInfo file => ShouldIgnoreFile(file),
+            _ => info.Name.StartsWith('.')
+        };
     }
-    
-    private bool ShouldIgnoreFile(FileInfo file, string relativePath)
+
+    private static readonly HashSet<string> IgnoredDirectories = new(StringComparer.OrdinalIgnoreCase)
     {
-        var fullPath = file.FullName;
-        var baseDir = GetBaseDirectory(fullPath, relativePath, file.Name);
-        return GitignoreUtils.ShouldIgnoreFile(fullPath, baseDir);
-    }
-    
-    private string GetBaseDirectory(string fullPath, string relativePath, string itemName)
+        "node_modules", "bin", "obj", "dist", "build", "out", ".git", ".vs", ".idea"
+    };
+
+    private static bool ShouldIgnoreDirectory(DirectoryInfo dir)
     {
-        // Calculate the base directory by removing the relative path portion
-        if (string.IsNullOrEmpty(relativePath))
-        {
-            return System.IO.Path.GetDirectoryName(fullPath) ?? fullPath;
-        }
-        
-        // Remove the relative path and item name to get the base directory
-        var pathToRemove = $"{relativePath}/{itemName}".Replace('/', System.IO.Path.DirectorySeparatorChar);
-        if (fullPath.EndsWith(pathToRemove))
-        {
-            return fullPath.Substring(0, fullPath.Length - pathToRemove.Length).TrimEnd(System.IO.Path.DirectorySeparatorChar);
-        }
-        
-        return System.IO.Path.GetDirectoryName(fullPath) ?? fullPath;
+        return dir.Name.StartsWith('.') ||
+               IgnoredDirectories.Contains(dir.Name) ||
+               GitignoreUtils.ShouldIgnoreFile(dir.FullName, dir.Parent?.FullName ?? dir.FullName);
     }
-    
-    protected override string? CreateSummary(string fullResult)
+
+    private static bool ShouldIgnoreFile(FileInfo file)
     {
-        var lines = fullResult.Split('\n');
-        
-        // If result is reasonably small, don't summarize
-        if (lines.Length <= 30) return null;
-        
-        // Take first 20 lines and the summary line
-        var truncatedLines = new List<string>();
-        truncatedLines.AddRange(lines.Take(20));
-        
-        // Find the total line (usually last non-empty line)
-        var totalLine = lines.LastOrDefault(l => l.StartsWith("Total:"));
-        if (totalLine != null)
-        {
-            truncatedLines.Add($"... {lines.Length - 21} more items");
-            truncatedLines.Add(totalLine);
-        }
-        else
-        {
-            truncatedLines.Add($"... {lines.Length - 20} more items");
-        }
-        
-        return string.Join('\n', truncatedLines);
+        return file.Name.StartsWith('.') ||
+               GitignoreUtils.ShouldIgnoreFile(file.FullName, file.DirectoryName ?? file.FullName);
     }
-    
+
+    private static string FormatSize(long bytes)
+    {
+        if (bytes == 0) return "0B";
+
+        string[] sizes = ["B", "KB", "MB", "GB", "TB"];
+        var order = (int)Math.Floor(Math.Log(bytes, 1024));
+        if (order >= sizes.Length) order = sizes.Length - 1;
+
+        var size = bytes / Math.Pow(1024, order);
+        return order == 0 ? $"{size:0}{sizes[order]}" : $"{size:0.#}{sizes[order]}";
+    }
+
+    private static string GetFileExtensionOrType(string fileName)
+    {
+        var extension = System.IO.Path.GetExtension(fileName).ToLowerInvariant();
+
+        if (string.IsNullOrEmpty(extension))
+        {
+            return fileName.ToLowerInvariant() switch
+            {
+                "makefile" or "dockerfile" or "license" or "readme" => fileName.ToLowerInvariant(),
+                _ => "no-ext"
+            };
+        }
+
+        if (fileName.Contains(".test.") || fileName.Contains(".spec."))
+            return extension + "-test";
+        if (fileName.Contains(".min."))
+            return extension + "-min";
+        if (fileName.EndsWith(".d.ts"))
+            return ".d.ts";
+
+        return extension;
+    }
+
+    private static string GetActivityMarker(DateTime lastModified)
+    {
+        var now = DateTime.Now;
+        var age = now - lastModified;
+
+        return age.TotalHours switch
+        {
+            < 1 => "just now",
+            < 24 => "today",
+            _ => age.TotalDays switch
+            {
+                < 2 => "yesterday",
+                < 7 => "this week",
+                < 30 => "this month",
+                < 365 => $"{(int)(age.TotalDays / 30)} months ago",
+                _ => $"{(int)(age.TotalDays / 365)} years ago"
+            }
+        };
+    }
+
+    private static string BuildPath(string parent, string child)
+    {
+        return string.IsNullOrEmpty(parent) ? child : $"{parent}/{child}";
+    }
+
     public override string ToString()
     {
-        return Depth > 1 ? $"{ToolName}: {Path} depth:{Depth}" : $"{ToolName}: {Path}";
+        var parts = new List<string> { $"{ToolName}: {Path}" };
+        if (Depth > 1) parts.Add($"depth:{Depth}");
+        if (DirectoriesOnly) parts.Add("directories_only:true");
+        return string.Join(" ", parts);
     }
 }

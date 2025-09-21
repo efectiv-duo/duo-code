@@ -75,6 +75,9 @@ SEARCH: context:N:search_term (N lines of context before/after match)";
         }
         
         output.AppendLine($"\nFound {results.Count} matches");
+
+        ConsoleResultMessage = $"Found {results.Count} matches";
+
         return output.ToString();
     }
     

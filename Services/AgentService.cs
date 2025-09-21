@@ -1,6 +1,8 @@
 using duo_code.Commands.Core;
-using duo_code.Models;
+using duo_code.Services.Interfaces;
+using duo_code.Tools;
 using duo_code.Tools.Core;
+using Spectre.Console;
 
 namespace duo_code.Services
 {
@@ -12,24 +14,24 @@ namespace duo_code.Services
         private readonly ToolRegistry _toolRegistry;
         private readonly StreamingResponseService _responseProcessor;
         private readonly ConsoleInterface _console;
-        private readonly ConversationState _state;
         private readonly ConversationLogger _logger;
+        private readonly IFileReferenceService _fileReferenceService;
 
         public AgentService(
             CommandRegistry commandRegistry,
             ToolRegistry toolRegistry,
             StreamingResponseService responseProcessor,
             ConsoleInterface console,
-            ConversationState state)
+            IFileReferenceService fileReferenceService = null)
         {
-            _currentProvider = ApiSettings.CurrentProvider;
+            _currentProvider = CurrentState.Provider;
             _apiService = ApiServiceFactory.CreateApiService(_currentProvider);
             _commandRegistry = commandRegistry;
             _toolRegistry = toolRegistry;
             _responseProcessor = responseProcessor;
             _console = console;
-            _state = state;
             _logger = new ConversationLogger();
+            _fileReferenceService = fileReferenceService ?? new FileReferenceService();
         }
 
         public async Task ProcessSubagentPromptAsync(string prompt)
@@ -38,23 +40,23 @@ namespace duo_code.Services
             await ProcessUserMessageAsync(prompt);
         }
 
-        public async Task RunAsync()
+        public async Task RunAsync(CancellationToken cancellationToken = default)
         {
             _console.ShowWelcomeMessage();
 
-            while (_state.IsRunning)
+            while (CurrentState.IsRunning && !cancellationToken.IsCancellationRequested)
             {
                 try
                 {
-                    var (input, modeSwitch) = await _console.GetUserInputAsync(_state.CurrentMode);
-                        
+                    var (input, modeSwitch) = await _console.GetUserInputAsync(CurrentState.CurrentMode);
+
                     // Handle mode switch
                     if (modeSwitch.HasValue)
                     {
-                        _state.CurrentMode = modeSwitch.Value;
+                        CurrentState.CurrentMode = modeSwitch.Value;
                         continue;
                     }
-                        
+
                     if (string.IsNullOrWhiteSpace(input)) continue;
 
                     if (input.StartsWith('/'))
@@ -65,6 +67,11 @@ namespace duo_code.Services
                     {
                         await ProcessUserMessageAsync(input);
                     }
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    _console.ShowInfo("Operation cancelled. Exiting...");
+                    break;
                 }
                 catch (Exception ex)
                 {
@@ -105,21 +112,29 @@ namespace duo_code.Services
 
             if (result.ShouldExit)
             {
-                _state.IsRunning = false;
+                CurrentState.IsRunning = false;
             }
         }
 
         private async Task ProcessUserMessageAsync(string userInput)
         {
-            _state.Messages.Add(new Message { Role = "user", Content = userInput });
+            // Process file references in user input
+            var fileReferenceResult = await _fileReferenceService.ProcessFileReferencesAsync(userInput);
 
-            // Continue prompting until FINISH_TASK is received
+            // Add user message
+            CurrentState.Messages.Add(new Message { Role = "user", Content = fileReferenceResult.ProcessedUserContent });
+
+            // Add system message with file references if any exist
+            if (fileReferenceResult.HasFileReferences && !string.IsNullOrEmpty(fileReferenceResult.SystemMessageContent))
+            {
+                CurrentState.Messages.Add(new Message { Role = "system", Content = fileReferenceResult.SystemMessageContent });
+            }
+
+            // Continue prompting until no tool request is received
             bool taskCompleted = false;
             while (!taskCompleted)
             {
                 var messageHistory = BuildMessageHistory();
-
-                _logger.SaveConversation(messageHistory);
 
                 using var cts = new CancellationTokenSource();
                 _console.SetupCancellation(cts);
@@ -128,20 +143,24 @@ namespace duo_code.Services
                 {
                     // Refresh API service if provider changed
                     RefreshApiServiceIfNeeded();
-                    
+
                     // Convert to CerebrasMessage format
-                    var cerebrasMessages = messageHistory.Select(m => new CerebrasMessage
+                    var messages = messageHistory.Select(m => new CerebrasMessage
                     {
                         Role = m.Role ?? "user",
                         Content = m.Content
                     }).ToList();
 
-                    Console.WriteLine("Message sent ..."); // Print pre-thought content immediately
+                    _logger.SaveConversation(messages.Select(m => $"{m.Role.ToUpper()}:\n{m.Content}\n\n").Aggregate((a, b) => $"{a}\n{b}"));
 
-                    var processedResponse = await _apiService.GetAISuggestionAsync(cerebrasMessages, cts.Token, ApiSettings.CurrentModel);
+                    WriteInfo("Sent API request.");
 
-                    if (!string.IsNullOrWhiteSpace(processedResponse.Content))
+                    var processedResponse = await _apiService.GetAISuggestionAsync(messages, cts.Token, CurrentState.Model, _console);
+
+                    if (!string.IsNullOrWhiteSpace(processedResponse?.Content))
                     {
+                        WriteInfo("Reading response.");
+
                         taskCompleted = await ProcessAssistantResponseAsync(processedResponse);
                     }
                 }
@@ -158,7 +177,8 @@ namespace duo_code.Services
             return Task.Run(() =>
             {
                 var tools = ToolFactory.Parse(response.Content);
-                bool finishTaskFound = false;
+
+                bool userCancelledToolExecution = false;
 
                 var message = new Message
                 {
@@ -168,34 +188,61 @@ namespace duo_code.Services
                     Actions = new List<IToolAction>()
                 };
 
+                CurrentState.Messages.Add(message);
+
+                if (tools.Count == 0)
+                {
+                    // If no tools have to be executed, just display the assistant's response.
+                    WriteAssistantResponse(response.Content);
+
+                    return true;
+                }
+
                 foreach (var tool in tools)
                 {
-                    _console.ShowToolExecution(tool.ToolName);
-
-                    // Check if this is the FINISH_TASK tool
-                    if (tool.ToolName == "FINISH_TASK")
+                    if (userCancelledToolExecution) // If user already cancelled a previous tool, skip remaining
                     {
-                        finishTaskFound = true;
+                        tool.SkipExecution();
+                        message.Actions.Add(tool);
+                        continue;
                     }
 
+                    WriteToolRequest(tool.ConsoleRequestMessage);
+
+                    // Display preview if available
+                    if (tool is UpdateFileAction)
+                    {
+                        (tool as UpdateFileAction).DisplayPreview(Directory.GetCurrentDirectory());
+                    }
+
+                    if (tool.RequiresConfirmation)
+                    {
+                        if (!_console.WaitForContinueOrCancel())
+                        {
+                            tool.CancelExecution();
+                            WriteError(tool.ConsoleResultMessage);
+                            message.Actions.Add(tool);
+                            userCancelledToolExecution = true;
+                            break;
+                        }
+                    }
                     try
                     {
-                        var result = tool.Execute(Directory.GetCurrentDirectory());
-                        _console.ShowToolResult(result);
-                        tool.FullResult = result;
+                        tool.Execute(Directory.GetCurrentDirectory());
+
+                        WriteToolResult(tool.ConsoleResultMessage ?? "no message");
+
                         message.Actions.Add(tool);
                     }
                     catch (Exception ex)
                     {
                         var errorResult = $"Error: {ex.Message}";
                         _console.ShowError(errorResult);
-                        tool.FullResult = errorResult;
+                        tool.ResultMessage = errorResult;
                         message.Actions.Add(tool);
                     }
                 }
 
-                _state.Messages.Add(message);
-                
                 // Add tool results as a user message if there were any tools executed
                 if (message.Actions != null && message.Actions.Count > 0)
                 {
@@ -205,45 +252,31 @@ namespace duo_code.Services
                         Content = message.BuildToolResultsMessage(),
                         Actions = message.Actions
                     };
-                    _state.Messages.Add(toolResultsMessage);
+
+                    CurrentState.Messages.Add(toolResultsMessage);
                 }
                 else
-                {
-                    _console.ShowAssistantResponse(response.Content);
-
-                    finishTaskFound = true;
+                {   // If no tools were executed, just display the assistant's response.
+                    WriteAssistantResponse(response.Content);
                 }
-                
-                // Save conversation after each assistant response
-                _logger.SaveConversation(_state.Messages);
-                
-                // Wait for user input before continuing (unless task is finished)
-                //if (!finishTaskFound)
-                //{
-                //    var shouldContinue = _console.WaitForContinueOrCancel();
-                //    if (!shouldContinue)
-                //    {
-                //        return true; // Exit the loop as if task was completed
-                //    }
-                //}
-                
-                return finishTaskFound;
+
+                return userCancelledToolExecution; // Return true if task finished OR user cancelled tools
             });
         }
 
         private List<Message> BuildMessageHistory()
         {
             var history = new List<Message>();
-            
+
             // Add dynamic starter messages first
             var starterMessages = BuildDynamicStarterMessages();
             history.AddRange(starterMessages);
-            
+
             // Add user conversation messages
-            var messageCount = _state.Messages.Count;
+            var messageCount = CurrentState.Messages.Count;
             for (int i = 0; i < messageCount; i++)
             {
-                var message = _state.Messages[i];
+                var message = CurrentState.Messages[i];
                 var distanceFromHead = messageCount - i - 1;
 
                 history.Add(new Message
@@ -259,39 +292,72 @@ namespace duo_code.Services
         private List<Message> BuildDynamicStarterMessages()
         {
             var contextBuilder = new ContextBuilder();
-            var contextFactory = new CodebaseContextFactory(Directory.GetCurrentDirectory());
+
+            // Execute the ListFilesAction to get actual directory structure
+            var listFilesAction = new ListFilesAction
+            {
+                Path = ".",
+                Depth = 3,
+                DirectoriesOnly = false
+            };
+            var listResult = listFilesAction.Execute(Directory.GetCurrentDirectory());
 
             var starterMessages = new List<Message>
             {
                 new Message
                 {
                     Role = "system",
-                    Content = contextBuilder.BuildContext(_state.CurrentMode)
+                    Content = contextBuilder.BuildContext(CurrentState.CurrentMode)
                 },
                 new Message
                 {
                     Role = "user",
-                    Content = "Analyze the current directory context."
+                    Content = "Analyze the current directory."
                 },
                 new Message
                 {
                     Role = "assistant",
-                    Content = "STARTER_CONTEXT: ."
+                    Content = "LIST_FILES: . depth:3 directories_only:false",
+                    Actions = new List<IToolAction> { listFilesAction }
+                },
+                new Message
+                {
+                    Role = "user",
+                    Content = listResult,
+                    Actions = new List<IToolAction> { listFilesAction }
                 }
             };
 
-            var context = contextFactory.CreateContext();
-            starterMessages.Add(new Message
+            // Check if DUOCODE.md exists and add its contents
+            var duocodeFilePath = Path.Combine(Directory.GetCurrentDirectory(), "DUOCODE.md");
+            if (File.Exists(duocodeFilePath))
             {
-                Role = "user",
-                Content = context.ToJson()
-            });
+                starterMessages.Add(new Message
+                {
+                    Role = "assistant",
+                    Content = "READ_FILE: DUOCODE.md purpose:I want to understand the context better."
+                });
+
+                var readFileAction = new ReadFileAction
+                {
+                    Path = "DUOCODE.md",
+                    CompressService = null,
+                    Purpose = "I want to understand the context better."
+                };
+                var duocodeContent = readFileAction.Execute(Directory.GetCurrentDirectory());
+
+                starterMessages.Add(new Message
+                {
+                    Role = "user",
+                    Content = duocodeContent,
+                    Actions = new List<IToolAction> { readFileAction }
+                });
+            }
 
             starterMessages.Add(new Message
             {
                 Role = "assistant",
-                Content = @"FINISH_TASK:
-Current directory context analyzed."
+                Content = "Current directory context analyzed."
             });
 
             return starterMessages;
@@ -299,10 +365,11 @@ Current directory context analyzed."
 
         private void RefreshApiServiceIfNeeded()
         {
-            if (_currentProvider != ApiSettings.CurrentProvider)
+            if (_currentProvider != CurrentState.Provider)
             {
                 _apiService?.Dispose();
-                _currentProvider = ApiSettings.CurrentProvider;
+
+                _currentProvider = CurrentState.Provider;
                 _apiService = ApiServiceFactory.CreateApiService(_currentProvider);
             }
         }

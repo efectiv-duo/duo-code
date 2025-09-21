@@ -10,7 +10,7 @@ public class GeminiApiService : IApiService
 {
     private readonly HttpClient _httpClient;
     private readonly string _apiKey;
-    private readonly string _baseUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent";
+    private readonly string _baseUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
     
     public GeminiApiService(string apiKey)
     {
@@ -18,15 +18,15 @@ public class GeminiApiService : IApiService
         _httpClient = new HttpClient();
         _httpClient.Timeout = TimeSpan.FromMinutes(5);
     }
-    
-    public async Task<ProcessedResponse> GetAISuggestionAsync(List<CerebrasMessage> messages, CancellationToken cancellationToken = default, string? model = null)
+
+    public async Task<ProcessedResponse> GetAISuggestionAsync(List<CerebrasMessage> messages, CancellationToken cancellationToken = default, string? model = null, ConsoleInterface? console = null)
     {
         var apiUrl = $"{_baseUrl}?key={_apiKey}";
-        
+
         var request = ConvertToGeminiRequest(messages);
-        
-        var jsonSettings = new JsonSerializerSettings 
-        { 
+
+        var jsonSettings = new JsonSerializerSettings
+        {
             ContractResolver = new CamelCasePropertyNamesContractResolver(),
             NullValueHandling = NullValueHandling.Ignore
         };
@@ -36,8 +36,9 @@ public class GeminiApiService : IApiService
 
         var response = await _httpClient.PostAsync(apiUrl, content, cancellationToken);
         response.EnsureSuccessStatusCode();
-        
-        return await StreamingResponseProcessor.ProcessAsync(response, cancellationToken, ApiProvider.Gemini);
+
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        return ParseGeminiResponse(body);
     }
     
     private GeminiRequest ConvertToGeminiRequest(List<CerebrasMessage> messages)
@@ -78,15 +79,52 @@ public class GeminiApiService : IApiService
             };
         }
         
-        // Add generation config
+        // Add generation config with thinking support
         request.GenerationConfig = new GenerationConfig
         {
             Temperature = 0.5f,
             TopP = 0.95f,
-            MaxOutputTokens = 8192
+            MaxOutputTokens = 65536,
+            ThinkingConfig = new ThinkingConfig
+            {
+                ThinkingBudget = -1,  // Dynamic thinking budget
+                IncludeThoughts = true
+            }
         };
         
         return request;
+    }
+
+    private static ProcessedResponse ParseGeminiResponse(string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        string content = string.Empty;
+        if (root.TryGetProperty("candidates", out var candidates)
+            && candidates.ValueKind == JsonValueKind.Array
+            && candidates.GetArrayLength() > 0)
+        {
+            var firstCandidate = candidates[0];
+            if (firstCandidate.TryGetProperty("content", out var contentNode)
+                && contentNode.TryGetProperty("parts", out var parts)
+                && parts.ValueKind == JsonValueKind.Array
+                && parts.GetArrayLength() > 0)
+            {
+                var firstPart = parts[0];
+                if (firstPart.TryGetProperty("text", out var textNode))
+                {
+                    content = textNode.GetString() ?? string.Empty;
+                }
+            }
+        }
+
+        return new ProcessedResponse
+        {
+            Content = content,
+            Thinking = string.Empty,     // you can add parsing if Gemini returns reasoning
+            OutputTokensCount = 0        // Gemini response includes "usageMetadata" sometimes, can parse if needed
+        };
     }
     
     public void Dispose()
@@ -132,6 +170,18 @@ public class GeminiApiService : IApiService
         
         [JsonProperty("maxOutputTokens", NullValueHandling = NullValueHandling.Ignore)]
         public int? MaxOutputTokens { get; set; }
+        
+        [JsonProperty("thinkingConfig", NullValueHandling = NullValueHandling.Ignore)]
+        public ThinkingConfig? ThinkingConfig { get; set; }
+    }
+    
+    private class ThinkingConfig
+    {
+        [JsonProperty("thinkingBudget")]
+        public int ThinkingBudget { get; set; }
+        
+        [JsonProperty("includeThoughts")]
+        public bool IncludeThoughts { get; set; }
     }
     #endregion
 }

@@ -3,6 +3,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using duo_code.Commands.Core;
 using duo_code.Services;
+using Spectre.Console;
 
 namespace duo_code.Commands.Actions
 {
@@ -13,55 +14,100 @@ namespace duo_code.Commands.Actions
         public CommandType Type => CommandType.Action;
         public string[] GetAliases() => new[] { "m" };
 
-
         public Task<CommandResult> ExecuteAsync(string[] args)
         {
-            if (args.Length == 0)
-            {
-                return ShowAvailableModels();
-            }
+            return ShowInteractiveModelSelection();
+        }
 
-            if (args[0].ToLower() == "provider")
+        private Task<CommandResult> ShowInteractiveModelSelection()
+        {
+            try
             {
-                if (args.Length < 2)
+                // Show current selection
+                var currentProvider = CurrentState.Provider;
+                var currentModel = CurrentState.Model;
+                
+                var currentPanel = new Panel($"[bold]Provider:[/] {currentProvider}\n[bold]Model:[/] {currentModel}")
                 {
-                    return ShowProviders();
-                }
+                    Header = new PanelHeader("[green]Current Selection[/]"),
+                    Border = BoxBorder.Rounded,
+                    BorderStyle = Style.Parse("green")
+                };
+                AnsiConsole.Write(currentPanel);
+                AnsiConsole.WriteLine();
 
-                if (Enum.TryParse<ApiProvider>(args[1], true, out var provider))
+                // Create selection options
+                var allModels = GetAllModelsWithDetails();
+                var choices = allModels.Select(m => 
                 {
-                    ApiSettings.CurrentProvider = provider;
-                    var models = ApiSettings.AvailableModels[provider];
-                    ApiSettings.CurrentModel = models.First();
+                    var isCurrent = m.Provider == currentProvider && m.Model == currentModel;
+                    var marker = isCurrent ? " [green](current)[/]" : "";
+                    return $"[bold {GetProviderColor(m.Provider)}]{m.Provider}[/] - {m.Model}{marker}";
+                }).ToList();
 
-                    // Save the settings
-                    ApiKeyManager.SaveCurrentSettings(ApiSettings.CurrentProvider, ApiSettings.CurrentModel);
+                var selection = AnsiConsole.Prompt(
+                    new SelectionPrompt<string>()
+                        .Title("[bold cyan]Select AI Model:[/]")
+                        .PageSize(10)
+                        .MoreChoicesText("[grey](Move up and down to reveal more models)[/]")
+                        .AddChoices(choices));
 
-                    return Task.FromResult(CommandResult.Ok($"Provider changed to: {provider}\nModel set to: {ApiSettings.CurrentModel}"));
-                }
+                // Find the selected model
+                var selectedIndex = choices.IndexOf(selection);
+                var selectedModel = allModels[selectedIndex];
 
-                return Task.FromResult(CommandResult.Error($"Invalid provider. Available: {string.Join(", ", Enum.GetNames<ApiProvider>())}"));
-            }
-
-            // Handle model selection by number
-            var allModels = GetAllModelsWithNumbers();
-            if (allModels.TryGetValue(args[0], out var modelInfo))
-            {
-                ApiSettings.CurrentProvider = modelInfo.Provider;
-                ApiSettings.CurrentModel = modelInfo.Model;
-
+                // Update settings
+                CurrentState.Provider = selectedModel.Provider;
+                CurrentState.Model = selectedModel.Model;
+                
                 // Save the settings
-                ApiKeyManager.SaveCurrentSettings(ApiSettings.CurrentProvider, ApiSettings.CurrentModel);
+                ApiKeyManager.SaveCurrentSettings(CurrentState.Provider, CurrentState.Model);
 
-                return Task.FromResult(CommandResult.Ok($"Provider: {modelInfo.Provider}\nModel changed to: {modelInfo.Model}"));
+                // Show success message
+                var successPanel = new Panel($"[bold]Provider:[/] {selectedModel.Provider}\n[bold]Model:[/] {selectedModel.Model}")
+                {
+                    Header = new PanelHeader("[green]✓ Selection Updated[/]"),
+                    Border = BoxBorder.Rounded,
+                    BorderStyle = Style.Parse("green")
+                };
+                AnsiConsole.Write(successPanel);
+
+                return Task.FromResult(CommandResult.Ok(""));
+            }
+            catch (Exception ex)
+            {
+                return Task.FromResult(CommandResult.Error($"Error during model selection: {ex.Message}"));
+            }
+        }
+
+        private List<(ApiProvider Provider, string Model)> GetAllModelsWithDetails()
+        {
+            var result = new List<(ApiProvider, string)>();
+
+            foreach (var provider in CurrentState.AvailableModels)
+            {
+                foreach (var model in provider.Value)
+                {
+                    result.Add((provider.Key, model));
+                }
             }
 
-            return Task.FromResult(CommandResult.Error($"Invalid model selection. Use /model to see available models."));
+            return result;
+        }
+
+        private string GetProviderColor(ApiProvider provider)
+        {
+            return provider switch
+            {
+                ApiProvider.Cerebras => "cyan",
+                ApiProvider.Gemini => "green",
+                _ => "white"
+            };
         }
 
         private Task<CommandResult> ShowProviders()
         {
-            var currentProvider = ApiSettings.CurrentProvider;
+            var currentProvider = CurrentState.Provider;
             var providers = string.Join("\n", Enum.GetNames<ApiProvider>().Select(p => 
                 p == currentProvider.ToString() ? $"  {p} (current)" : $"  {p}"));
             var message = $"Available providers:\n{providers}\n\nUsage: /model provider <name>";
@@ -71,8 +117,8 @@ namespace duo_code.Commands.Actions
         private Task<CommandResult> ShowAvailableModels()
         {
             var allModels = GetAllModelsWithNumbers();
-            var currentProvider = ApiSettings.CurrentProvider;
-            var currentModel = ApiSettings.CurrentModel;
+            var currentProvider = CurrentState.Provider;
+            var currentModel = CurrentState.Model;
             
             var modelList = string.Join("\n", allModels.Select(kvp => 
             {
@@ -90,7 +136,7 @@ namespace duo_code.Commands.Actions
             var result = new Dictionary<string, (ApiProvider, string)>();
             int counter = 1;
 
-            foreach (var provider in ApiSettings.AvailableModels)
+            foreach (var provider in CurrentState.AvailableModels)
             {
                 foreach (var model in provider.Value)
                 {
