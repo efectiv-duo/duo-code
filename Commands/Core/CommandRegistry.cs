@@ -40,6 +40,7 @@ namespace duo_code.Commands.Core
             Register(new ChallengeCommand());
             Register(new ApiKeyCommand());
             Register(new StatsCommand());
+            Register(new DeleteStatsCommand());
         }
 
         private void LoadPromptCommands()
