@@ -43,7 +43,7 @@ namespace duo_code.Tools.Core
             foreach (var toolType in _toolTypes.Values)
             {
                 var instance = Activator.CreateInstance(toolType) as IToolAction;
-                if (instance != null && IsDefaultModeTool(instance.ToolName))
+                if (instance != null && IncludeTool(instance.ToolName))
                 {
                     toolInfos.Add((instance.ToolName, instance.Description));
                 }
@@ -58,10 +58,9 @@ namespace duo_code.Tools.Core
             return sb.ToString();
         }
 
-
-        private bool IsDefaultModeTool(string toolName)
+        private bool IncludeTool(string toolName)
         {
-            // Default mode has access to all core file and analysis tools
+            // Include the tools that you want the agent to have access to
             var defaultTools = new HashSet<string>
             {
                 "LIST_FILES", "FIND", "SEARCH", "READ_FILE", "GIT_SUMMARY", "CREATE_FILE", "UPDATE_FILE",
@@ -70,8 +69,6 @@ namespace duo_code.Tools.Core
             };
             return defaultTools.Contains(toolName);
         }
-
-
 
         public List<string> GetToolNames()
         {
