@@ -24,7 +24,7 @@ public class AnthropicApiService : IApiService
     }
 
     public async Task<ProcessedResponse> GetAISuggestionAsync(
-    List<CerebrasMessage> messages,
+    List<RequestMessage> messages,
     CancellationToken cancellationToken = default,
     string? model = null,
     ConsoleInterface? console = null)
@@ -91,7 +91,7 @@ public class AnthropicApiService : IApiService
     }
 
 
-    private AnthropicRequest ConvertToAnthropicRequest(List<CerebrasMessage> messages, string model)
+    private AnthropicRequest ConvertToAnthropicRequest(List<RequestMessage> messages, string model)
     {
         var (anthropicMessages, systemMessage) = ConvertToAnthropicFormat(messages);
 
@@ -106,7 +106,7 @@ public class AnthropicApiService : IApiService
         };
     }
 
-    private (List<AnthropicMessage> messages, string? systemMessage) ConvertToAnthropicFormat(List<CerebrasMessage> messages)
+    private (List<AnthropicMessage> messages, string? systemMessage) ConvertToAnthropicFormat(List<RequestMessage> messages)
     {
         var anthropicMessages = new List<AnthropicMessage>();
         string? systemMessage = null;

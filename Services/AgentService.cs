@@ -144,8 +144,8 @@ namespace duo_code.Services
                     // Refresh API service if provider changed
                     RefreshApiServiceIfNeeded();
 
-                    // Convert to CerebrasMessage format
-                    var messages = messageHistory.Select(m => new CerebrasMessage
+                    // Convert to RequestMessage format
+                    var messages = messageHistory.Select(m => new RequestMessage
                     {
                         Role = m.Role ?? "user",
                         Content = m.Content

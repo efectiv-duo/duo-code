@@ -19,7 +19,7 @@ public class GeminiApiService : IApiService
         _httpClient.Timeout = TimeSpan.FromMinutes(5);
     }
 
-    public async Task<ProcessedResponse> GetAISuggestionAsync(List<CerebrasMessage> messages, CancellationToken cancellationToken = default, string? model = null, ConsoleInterface? console = null)
+    public async Task<ProcessedResponse> GetAISuggestionAsync(List<RequestMessage> messages, CancellationToken cancellationToken = default, string? model = null, ConsoleInterface? console = null)
     {
         var apiUrl = $"{_baseUrl}?key={_apiKey}";
 
@@ -41,7 +41,7 @@ public class GeminiApiService : IApiService
         return ParseGeminiResponse(body);
     }
     
-    private GeminiRequest ConvertToGeminiRequest(List<CerebrasMessage> messages)
+    private GeminiRequest ConvertToGeminiRequest(List<RequestMessage> messages)
     {
         var request = new GeminiRequest();
         string? systemInstruction = null;

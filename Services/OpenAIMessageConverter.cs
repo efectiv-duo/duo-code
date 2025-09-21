@@ -4,7 +4,7 @@ namespace duo_code.Services;
 
 public class OpenAIMessageConvertor
 {
-    public static OpenAIRequest ConvertToOpenAiRequest(List<CerebrasMessage> messages, string model)
+    public static OpenAIRequest ConvertToOpenAiRequest(List<RequestMessage> messages, string model)
     {
         var request = new OpenAIRequest
         {

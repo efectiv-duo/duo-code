@@ -6,7 +6,7 @@ public static class ApiServiceFactory
     {
         return provider switch
         {
-            ApiProvider.Cerebras => new ApiService(GetOrPromptForApiKey(provider)),
+            ApiProvider.Cerebras => new CerebrasApiService(GetOrPromptForApiKey(provider)),
             ApiProvider.Gemini => new GeminiApiService(GetOrPromptForApiKey(provider)),
             ApiProvider.Anthropic => new AnthropicApiService(GetOrPromptForApiKey(provider)),
             ApiProvider.OpenAI => new OpenAiApiService(GetOrPromptForApiKey(provider)),

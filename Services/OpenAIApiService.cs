@@ -24,7 +24,7 @@ public class OpenAiApiService : IApiService, IDisposable
     }
 
     public async Task<ProcessedResponse> GetAISuggestionAsync(
-        List<CerebrasMessage> messages,
+        List<RequestMessage> messages,
         CancellationToken cancellationToken = default,
         string? model = null,
         ConsoleInterface? console = null)
@@ -126,7 +126,7 @@ public class OpenAiApiService : IApiService, IDisposable
         => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(s))).Substring(0, 12);
 
     /// Quick-and-dirty input token estimation (≈ 4 chars/token + small per-message overhead).
-    private static int EstimateInputTokens(List<CerebrasMessage> messages)
+    private static int EstimateInputTokens(List<RequestMessage> messages)
     {
         var chars = messages?.Sum(m => m?.Content?.Length ?? 0) ?? 0;
         var approx = Math.Max(1, chars / 4);

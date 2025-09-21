@@ -6,12 +6,12 @@ using duo_code.Models;
 
 namespace duo_code.Services;
 
-public class ApiService : IApiService
+public class CerebrasApiService : IApiService
 {
     private readonly HttpClient _httpClient;
     private readonly string _apiUrl = "https://api.cerebras.ai/v1/chat/completions";
 
-    public ApiService(string apiKey)
+    public CerebrasApiService(string apiKey)
     {
         _httpClient = new HttpClient();
 
@@ -19,7 +19,7 @@ public class ApiService : IApiService
         _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
     }
 
-    public async Task<ProcessedResponse> GetAISuggestionAsync(List<CerebrasMessage> messages, CancellationToken cancellationToken = default, string? model = null, ConsoleInterface? console = null)
+    public async Task<ProcessedResponse> GetAISuggestionAsync(List<RequestMessage> messages, CancellationToken cancellationToken = default, string? model = null, ConsoleInterface? console = null)
     {
         // Use provided model or fall back to current model setting
         var targetModel = model ?? CurrentState.Model;
@@ -48,7 +48,7 @@ public class ApiService : IApiService
         return ParseNonStreamChatCompletion(body);
     }
 
-    private async Task<HttpResponseMessage> TryGetAISuggestionWithModelAsync(List<CerebrasMessage> messages, string model, CancellationToken cancellationToken)
+    private async Task<HttpResponseMessage> TryGetAISuggestionWithModelAsync(List<RequestMessage> messages, string model, CancellationToken cancellationToken)
     {
         var request = new
         {
