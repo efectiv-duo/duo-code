@@ -89,7 +89,7 @@ namespace duo_code.Tools.Core
             // Planning mode has access to read-only tools and planning tools
             var planningTools = new HashSet<string>
             {
-                "LIST_FILES", "FIND", "SEARCH", "READ_FILE", "NOTES"
+                "LIST_FILES", "FIND", "SEARCH", "READ_FILE", "GIT_SUMMARY"
             };
             return planningTools.Contains(toolName);
         }
