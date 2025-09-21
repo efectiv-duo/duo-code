@@ -1,5 +1,7 @@
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Threading.Tasks;
 using duo_code.Models;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
@@ -97,36 +99,45 @@ public class GeminiApiService : IApiService
 
     private static ProcessedResponse ParseGeminiResponse(string json)
     {
-        using var doc = JsonDocument.Parse(json);
-        var root = doc.RootElement;
+        var n = JsonNode.Parse(json);
+        var parts = n?["candidates"]?[0]?["content"]?["parts"] as JsonArray;
 
         string content = string.Empty;
-        if (root.TryGetProperty("candidates", out var candidates)
-            && candidates.ValueKind == JsonValueKind.Array
-            && candidates.GetArrayLength() > 0)
+        string thinking = string.Empty;
+
+        if (parts is { Count: > 0 })
         {
-            var firstCandidate = candidates[0];
-            if (firstCandidate.TryGetProperty("content", out var contentNode)
-                && contentNode.TryGetProperty("parts", out var parts)
-                && parts.ValueKind == JsonValueKind.Array
-                && parts.GetArrayLength() > 0)
+            // last part -> content
+            content = parts[^1]?["text"]?.GetValue<string>() ?? string.Empty;
+
+            // earlier parts with thought:true -> thinking
+            var sb = new StringBuilder();
+            for (int i = 0; i < parts.Count - 1; i++)
             {
-                var firstPart = parts[0];
-                if (firstPart.TryGetProperty("text", out var textNode))
+                var p = parts[i];
+                if (p?["thought"]?.GetValue<bool>() == true)
                 {
-                    content = textNode.GetString() ?? string.Empty;
+                    var t = p?["text"]?.GetValue<string>();
+                    if (!string.IsNullOrEmpty(t))
+                    {
+                        if (sb.Length > 0) sb.AppendLine().AppendLine();
+                        sb.Append(t);
+                    }
                 }
             }
+            thinking = sb.ToString();
         }
+
+        int outputTokens = n?["usageMetadata"]?["totalTokenCount"]?.GetValue<int?>() ?? 0;
 
         return new ProcessedResponse
         {
             Content = content,
-            Thinking = string.Empty,     // you can add parsing if Gemini returns reasoning
-            OutputTokensCount = 0        // Gemini response includes "usageMetadata" sometimes, can parse if needed
+            Thinking = thinking,
+            OutputTokensCount = outputTokens
         };
     }
-    
+
     public void Dispose()
     {
         _httpClient?.Dispose();
