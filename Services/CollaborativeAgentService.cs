@@ -1,6 +1,7 @@
 using duo_code.Commands.Core;
 using duo_code.Services.Interfaces;
 using duo_code.Tools.Core;
+using System;
 
 namespace duo_code.Services
 {
@@ -24,11 +25,14 @@ namespace duo_code.Services
             _currentProvider = CurrentState.Provider;
             _apiService = ApiServiceFactory.CreateApiService(_currentProvider);
 
+            // Create observer service
+            var observerService = new ObserverService(_apiService, toolRegistry, console);
+
             // Create worker service
             var workerService = new WorkerService(_apiService, toolRegistry, console);
-            
+
             // Create orchestrator service
-            _orchestratorService = new OrchestratorService(_apiService, console, workerService);
+            _orchestratorService = new OrchestratorService(_apiService, console, workerService, observerService);
         }
 
         public async Task ProcessSubagentPromptAsync(string prompt)
@@ -126,8 +130,9 @@ namespace duo_code.Services
                 
                 // Recreate services with new API service
                 var toolRegistry = new ToolRegistry();
+                var observerService = new ObserverService(_apiService, toolRegistry, _console);
                 var workerService = new WorkerService(_apiService, toolRegistry, _console);
-                _orchestratorService = new OrchestratorService(_apiService, _console, workerService);
+                _orchestratorService = new OrchestratorService(_apiService, _console, workerService, observerService);
             }
         }
     }
