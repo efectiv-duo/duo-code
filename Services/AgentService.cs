@@ -48,14 +48,7 @@ namespace duo_code.Services
             {
                 try
                 {
-                    var (input, modeSwitch) = await _console.GetUserInputAsync(CurrentState.CurrentMode);
-
-                    // Handle mode switch
-                    if (modeSwitch.HasValue)
-                    {
-                        CurrentState.CurrentMode = modeSwitch.Value;
-                        continue;
-                    }
+                    var input = await _console.GetUserInputAsync();
 
                     if (string.IsNullOrWhiteSpace(input)) continue;
 
@@ -307,7 +300,7 @@ namespace duo_code.Services
                 new Message
                 {
                     Role = "system",
-                    Content = contextBuilder.BuildContext(CurrentState.CurrentMode)
+                    Content = contextBuilder.BuildContext()
                 },
                 new Message
                 {

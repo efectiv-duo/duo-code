@@ -7,7 +7,6 @@ public static class CurrentState
     public static string FallbackModel { get; set; } = "qwen-3-32b";
     public static List<Message> Messages { get; } = new();
     public static bool IsRunning { get; set; } = true;
-    public static Mode CurrentMode { get; set; } = Mode.Default;
 
     public static void UpdateModelAndProvider(ApiProvider apiProvider, string model)
     {

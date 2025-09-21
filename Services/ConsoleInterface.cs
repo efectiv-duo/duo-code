@@ -1,7 +1,6 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using duo_code.Models;
 using duo_code.Commands.Core;
 using Spectre.Console;
 
@@ -31,7 +30,6 @@ namespace duo_code.Services
 
             var logger = new ConversationLogger();
             AnsiConsole.MarkupLine("[dim]Type [bold]/help[/] for commands. [bold]/exit[/] to quit.[/]");
-            AnsiConsole.MarkupLine("[dim]Press [bold cyan]Shift+Tab[/] to switch modes.[/]");
             WriteInfo($"Conversation logs saved to: {logger.GetLogsDirectory()}");
             WriteInfo($"Current working directory: {Directory.GetCurrentDirectory()}");
             AnsiConsole.WriteLine();
@@ -45,40 +43,32 @@ namespace duo_code.Services
             _commandRegistry = commandRegistry;
         }
         
-        public async Task<(string input, Mode? modeSwitch)> GetUserInputAsync(Mode currentMode)
+        public async Task<string> GetUserInputAsync()
         {
             // Simple console read implementation
-            ShowPrompt(currentMode);
+            ShowPrompt();
             var input = await Task.Run(() => Console.ReadLine() ?? string.Empty);
-            
+
             // Add to history if not empty
             if (!string.IsNullOrWhiteSpace(input))
             {
                 AddToHistory(input);
             }
-            
-            return (input, null);
+
+            return input;
         }
         
-        private (string input, Mode? modeSwitch) GetUserInputWithCustomHandling(Mode currentMode)
+        private string GetUserInputWithCustomHandling()
         {
-            var customInput = new CustomTextInput(_commandRegistry, _commandHistory, currentMode);
+            var customInput = new CustomTextInput(_commandRegistry, _commandHistory);
             var result = customInput.ReadInput();
-            
-            // Handle mode switching
-            if (result.input == "SWITCH_MODE")
-            {
-                var nextMode = GetNextMode(currentMode);
-                ShowModeSwitch(nextMode);
-                return ("", nextMode);
-            }
-            
+
             // Save command history
-            if (!string.IsNullOrWhiteSpace(result.input))
+            if (!string.IsNullOrWhiteSpace(result))
             {
                 SaveCommandHistory();
             }
-            
+
             return result;
         }
         
@@ -296,46 +286,12 @@ namespace duo_code.Services
             return str1[..commonLength];
         }
         
-        private string GetStyledPrompt(Mode currentMode)
-        {
-            return currentMode switch
-            {
-                Mode.Default => "[bold cyan][[DEFAULT]][/]> ",
-                Mode.Planning => "[bold yellow][[PLANNING]][/]> ",
-                Mode.Orchestrator => "[bold magenta][[ORCHESTRATOR]][/]> ",
-                _ => "[bold white][[UNKNOWN]][/]> "
-            };
-        }
         
-        private int GetPromptLength(Mode currentMode)
-        {
-            return currentMode switch
-            {
-                Mode.Default => "[DEFAULT]> ".Length,
-                Mode.Planning => "[PLANNING]> ".Length,
-                Mode.Orchestrator => "[ORCHESTRATOR]> ".Length,
-                _ => "[UNKNOWN]> ".Length
-            };
-        }
 
-        private Mode GetNextMode(Mode currentMode)
-        {
-            return currentMode switch
-            {
-                Mode.Default => Mode.Planning,
-                Mode.Planning => Mode.Orchestrator,
-                Mode.Orchestrator => Mode.Default,
-                _ => Mode.Default
-            };
-        }
         
-        private void ShowPrompt(Mode currentMode)
+        private void ShowPrompt()
         {
-            var promptText = currentMode switch
-            {
-                _ => "[magenta]>[/] "
-            };
-            AnsiConsole.Markup(promptText);
+            AnsiConsole.Markup("[magenta]>[/] ");
         }
 
         public void ShowError(string error)
@@ -355,25 +311,6 @@ namespace duo_code.Services
             AnsiConsole.WriteLine(info, Style.Parse("dim"));
         }
         
-        public void ShowModeSwitch(Mode newMode)
-        {
-            var modeColor = newMode switch
-            {
-                Mode.Default => "cyan",
-                Mode.Planning => "yellow", 
-                Mode.Orchestrator => "magenta",
-                _ => "white"
-            };
-            
-            var panel = new Panel(new Text($"Switched to {newMode.ToDisplayString()} mode"))
-            {
-                Header = new PanelHeader($"[{modeColor}]Mode Switch[/]"),
-                Border = BoxBorder.Rounded,
-                BorderStyle = Style.Parse(modeColor)
-            };
-            
-            AnsiConsole.Write(panel);
-        }
 
         public void ShowThinking()
         {

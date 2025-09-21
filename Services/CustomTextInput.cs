@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using duo_code.Commands.Core;
-using duo_code.Models;
 using Spectre.Console;
 
 namespace duo_code.Services
@@ -11,7 +10,6 @@ namespace duo_code.Services
     {
         private readonly CommandRegistry? _commandRegistry;
         private readonly List<string> _commandHistory;
-        private readonly Mode _currentMode;
         private readonly FileSearchService _fileSearchService;
         private int _historyIndex = -1;
         private List<FileSearchResult> _fileSuggestions = new();
@@ -40,15 +38,14 @@ namespace duo_code.Services
         private bool _inputRepositioned = false;
         private const int RequiredSuggestionLines = SuggestionsPerPage;
 
-        public CustomTextInput(CommandRegistry? commandRegistry, List<string> commandHistory, Mode currentMode)
+        public CustomTextInput(CommandRegistry? commandRegistry, List<string> commandHistory)
         {
             _commandRegistry = commandRegistry;
             _commandHistory = commandHistory;
-            _currentMode = currentMode;
             _fileSearchService = new FileSearchService();
         }
 
-        public (string input, Mode? modeSwitch) ReadInput()
+        public string ReadInput()
         {
             // Custom input handling with enhanced visuals
             var line = "";
@@ -56,7 +53,7 @@ namespace duo_code.Services
             _historyIndex = -1;
 
             // Show input prompt with styling
-            var promptText = $"[{GetModeColor()}]> [/]";
+            var promptText = "[magenta]> [/]";
             AnsiConsole.Markup(promptText);
             var promptLength = "> ".Length;
             
@@ -69,12 +66,6 @@ namespace duo_code.Services
             {
                 var keyInfo = Console.ReadKey(true);
 
-                // Check for Shift+Tab (mode switching)
-                if (keyInfo.Key == ConsoleKey.Tab && keyInfo.Modifiers == ConsoleModifiers.Shift)
-                {
-                    Console.WriteLine();
-                    return ("SWITCH_MODE", null);
-                }
 
                 switch (keyInfo.Key)
                 {
@@ -108,7 +99,7 @@ namespace duo_code.Services
                         {
                             AddToHistory(line);
                         }
-                        return (line, null);
+                        return line;
 
                     case ConsoleKey.Backspace:
                         if (cursorPosition > 0)
@@ -335,25 +326,9 @@ namespace duo_code.Services
 
         private string GetModeHeader()
         {
-            return _currentMode switch
-            {
-                Mode.Default => $"[{GetModeColor()}]Default Mode - General AI Assistant[/]",
-                Mode.Planning => $"[{GetModeColor()}]Planning Mode - Strategic Analysis[/]",
-                Mode.Orchestrator => $"[{GetModeColor()}]Orchestrator Mode - Complex Task Management[/]",
-                _ => $"[{GetModeColor()}]Unknown Mode[/]"
-            };
+            return "[magenta]General AI Assistant[/]";
         }
 
-        private string GetModeColor()
-        {
-            return _currentMode switch
-            {
-                Mode.Default => "cyan",
-                Mode.Planning => "yellow",
-                Mode.Orchestrator => "magenta",
-                _ => "white"
-            };
-        }
 
         private void AddToHistory(string command)
         {
@@ -797,7 +772,7 @@ namespace duo_code.Services
                     
                     // Redraw input at new position
                     Console.SetCursorPosition(0, _inputLineTop);
-                    var promptText = $"[{GetModeColor()}]> [/]";
+                    var promptText = "[magenta]> [/]";
                     AnsiConsole.Markup(promptText);
                     
                     if (!string.IsNullOrEmpty(_lastRenderedLine))
@@ -837,7 +812,7 @@ namespace duo_code.Services
             
             // Redraw input at original position
             Console.SetCursorPosition(0, _inputLineTop);
-            var promptText = $"[{GetModeColor()}]> [/]";
+            var promptText = "[magenta]> [/]";
             AnsiConsole.Markup(promptText);
             
             if (!string.IsNullOrEmpty(_lastRenderedLine))

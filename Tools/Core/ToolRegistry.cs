@@ -1,4 +1,3 @@
-using duo_code.Models;
 using System.Text;
 
 namespace duo_code.Tools.Core
@@ -25,8 +24,6 @@ namespace duo_code.Tools.Core
             Register<DeleteDirectoryAction>();
             Register<RenameFileAction>();
             Register<RunCommandAction>();
-            Register<NotesAction>();
-            Register<SpawnSubagentAction>();
         }
 
         private void Register<T>() where T : IToolAction, new()
@@ -35,7 +32,7 @@ namespace duo_code.Tools.Core
             _toolTypes[instance.ToolName] = typeof(T);
         }
 
-        public string GetAllToolInstructions(Mode mode = Mode.Default)
+        public string GetAllToolInstructions()
         {
             var sb = new StringBuilder();
             sb.AppendLine("You have access to the following tools:");
@@ -46,7 +43,7 @@ namespace duo_code.Tools.Core
             foreach (var toolType in _toolTypes.Values)
             {
                 var instance = Activator.CreateInstance(toolType) as IToolAction;
-                if (instance != null && IsToolAvailableForMode(instance.ToolName, mode))
+                if (instance != null && IsDefaultModeTool(instance.ToolName))
                 {
                     toolInfos.Add((instance.ToolName, instance.Description));
                 }
@@ -61,16 +58,6 @@ namespace duo_code.Tools.Core
             return sb.ToString();
         }
 
-        private bool IsToolAvailableForMode(string toolName, Mode mode)
-        {
-            return mode switch
-            {
-                Mode.Default => IsDefaultModeTool(toolName),
-                Mode.Planning => IsPlanningModeTool(toolName),
-                Mode.Orchestrator => IsOrchestratorModeTool(toolName),
-                _ => true
-            };
-        }
 
         private bool IsDefaultModeTool(string toolName)
         {
@@ -84,25 +71,7 @@ namespace duo_code.Tools.Core
             return defaultTools.Contains(toolName);
         }
 
-        private bool IsPlanningModeTool(string toolName)
-        {
-            // Planning mode has access to read-only tools and planning tools
-            var planningTools = new HashSet<string>
-            {
-                "LIST_FILES", "FIND", "SEARCH", "READ_FILE", "NOTES"
-            };
-            return planningTools.Contains(toolName);
-        }
 
-        private bool IsOrchestratorModeTool(string toolName)
-        {
-            // Orchestrator mode can spawn subagents and use basic analysis tools
-            var orchestratorTools = new HashSet<string>
-            {
-                "LIST_FILES", "FIND", "SEARCH", "READ_FILE", "SPAWN_SUBAGENT", "NOTES"
-            };
-            return orchestratorTools.Contains(toolName);
-        }
 
         public List<string> GetToolNames()
         {
