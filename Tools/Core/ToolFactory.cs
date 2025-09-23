@@ -48,7 +48,9 @@ public static class ToolFactory
             int contentEndIndex = contentStartIndex;
 
             // For tools that need content, find where the next tool starts
-            if (toolType == "CREATE_FILE" || toolType == "UPDATE_FILE" || toolType == "NOTES" || toolType == "SPAWN_SUBAGENT")
+            if (toolType == "CREATE_FILE" || toolType == "UPDATE_FILE" || toolType == "NOTES" || toolType == "SPAWN_SUBAGENT" ||
+                toolType == "ENTITY" || toolType == "ENTITY_CONFIG" || toolType == "QUERY_FEATURE" || toolType == "COMMAND_FEATURE" ||
+                toolType == "CONTROLLER_ENDPOINT" || toolType == "SEED" || toolType == "DOMAIN_EVENT" || toolType == "EVENT_HANDLER")
             {
                 // Find the next tool command or end of input
                 while (contentEndIndex < lines.Length)
@@ -110,6 +112,41 @@ public static class ToolFactory
                     var prompt = string.Join(Environment.NewLine, lines.Skip(contentStartIndex).Take(contentEndIndex - contentStartIndex));
                     action = new SpawnSubagentAction { TaskDescription = args, Prompt = prompt, ConsoleRequestMessage = currentLine };
                     break;
+                case "ENTITY":
+                    var entityCode = string.Join(Environment.NewLine, lines.Skip(contentStartIndex).Take(contentEndIndex - contentStartIndex));
+                    action = new CreateEntityAction { EntityName = args, EntityCode = entityCode, ConsoleRequestMessage = currentLine };
+                    break;
+                case "ENTITY_CONFIG":
+                    var configCode = string.Join(Environment.NewLine, lines.Skip(contentStartIndex).Take(contentEndIndex - contentStartIndex));
+                    action = new EntityConfigAction { EntityName = args, ConfigurationCode = configCode, ConsoleRequestMessage = currentLine };
+                    break;
+                case "ADD_MIGRATION":
+                    action = new AddMigrationAction { MigrationName = args, ConsoleRequestMessage = currentLine };
+                    break;
+                case "QUERY_FEATURE":
+                    var queryCode = string.Join(Environment.NewLine, lines.Skip(contentStartIndex).Take(contentEndIndex - contentStartIndex));
+                    action = new QueryFeatureAction { FeatureName = args, FeatureCode = queryCode, ConsoleRequestMessage = currentLine };
+                    break;
+                case "COMMAND_FEATURE":
+                    var commandCode = string.Join(Environment.NewLine, lines.Skip(contentStartIndex).Take(contentEndIndex - contentStartIndex));
+                    action = new CommandFeatureAction { FeatureName = args, FeatureCode = commandCode, ConsoleRequestMessage = currentLine };
+                    break;
+                case "CONTROLLER_ENDPOINT":
+                    var controllerCode = string.Join(Environment.NewLine, lines.Skip(contentStartIndex).Take(contentEndIndex - contentStartIndex));
+                    action = new ControllerEndpointAction { ControllerName = args, ControllerCode = controllerCode, ConsoleRequestMessage = currentLine };
+                    break;
+                case "SEED":
+                    var seedCode = string.Join(Environment.NewLine, lines.Skip(contentStartIndex).Take(contentEndIndex - contentStartIndex));
+                    action = new SeedAction { SeedCode = seedCode, ConsoleRequestMessage = currentLine };
+                    break;
+                case "DOMAIN_EVENT":
+                    var eventCode = string.Join(Environment.NewLine, lines.Skip(contentStartIndex).Take(contentEndIndex - contentStartIndex));
+                    action = new DomainEventAction { EventName = args, EventCode = eventCode, ConsoleRequestMessage = currentLine };
+                    break;
+                case "EVENT_HANDLER":
+                    var handlerCode = string.Join(Environment.NewLine, lines.Skip(contentStartIndex).Take(contentEndIndex - contentStartIndex));
+                    action = new EventHandlerAction { HandlerName = args, HandlerCode = handlerCode, ConsoleRequestMessage = currentLine };
+                    break;
             }
 
             if (action != null)
@@ -123,7 +160,9 @@ public static class ToolFactory
             }
 
             // Move to the next potential tool
-            i = toolType == "CREATE_FILE" || toolType == "UPDATE_FILE" || toolType == "NOTES" || toolType == "SPAWN_SUBAGENT"
+            i = toolType == "CREATE_FILE" || toolType == "UPDATE_FILE" || toolType == "NOTES" || toolType == "SPAWN_SUBAGENT" ||
+                toolType == "ENTITY" || toolType == "ENTITY_CONFIG" || toolType == "QUERY_FEATURE" || toolType == "COMMAND_FEATURE" ||
+                toolType == "CONTROLLER_ENDPOINT" || toolType == "SEED" || toolType == "DOMAIN_EVENT" || toolType == "EVENT_HANDLER"
                 ? contentEndIndex
                 : i + 1;
         }

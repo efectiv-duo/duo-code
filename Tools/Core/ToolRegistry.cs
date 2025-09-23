@@ -24,6 +24,16 @@ namespace duo_code.Tools.Core
             Register<DeleteDirectoryAction>();
             Register<RenameFileAction>();
             Register<RunCommandAction>();
+            // Backend tools
+            Register<CreateEntityAction>();
+            Register<EntityConfigAction>();
+            Register<QueryFeatureAction>();
+            Register<CommandFeatureAction>();
+            Register<ControllerEndpointAction>();
+            Register<AddMigrationAction>();
+            Register<SeedAction>();
+            Register<DomainEventAction>();
+            Register<EventHandlerAction>();
         }
 
         private void Register<T>() where T : IToolAction, new()
@@ -63,9 +73,9 @@ namespace duo_code.Tools.Core
             // Include the tools that you want the agent to have access to
             var defaultTools = new HashSet<string>
             {
-                "LIST_FILES", "FIND", "SEARCH", "READ_FILE", "GIT_SUMMARY", "CREATE_FILE", "UPDATE_FILE",
-                "DELETE_FILE", "CREATE_DIR", "DELETE_DIR", "RENAME_FILE",
-                "RUN_COMMAND"
+                "LIST_FILES", "FIND", "SEARCH", "READ_FILE",
+                "ENTITY", "ENTITY_CONFIG", "QUERY_FEATURE", "COMMAND_FEATURE",
+                "CONTROLLER_ENDPOINT", "ADD_MIGRATION", "SEED", "DOMAIN_EVENT", "EVENT_HANDLER"
             };
             return defaultTools.Contains(toolName);
         }
@@ -76,3 +86,8 @@ namespace duo_code.Tools.Core
         }
     }
 }
+
+
+// "GIT_SUMMARY", "CREATE_FILE", "UPDATE_FILE",
+//"DELETE_FILE", "CREATE_DIR", "DELETE_DIR", "RENAME_FILE",
+//                "RUN_COMMAND"
