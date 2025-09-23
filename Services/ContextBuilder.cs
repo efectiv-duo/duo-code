@@ -19,39 +19,28 @@ namespace duo_code.Services
         {
             var builder = new StringBuilder();
 
-            // Add default system prompt
-            builder.AppendLine(@"I am an agent.");
-            builder.AppendLine();
-            builder.AppendLine("## Core Thinking Loop");
-            builder.AppendLine();
-            builder.AppendLine("**observe** → **orient** → **decide** → **act** → **test** → **document**");
-            builder.AppendLine();
-            builder.AppendLine("### 1. Observe");
-            builder.AppendLine("Gather complete context: user request, codebase state, dependencies, constraints.");
-            builder.AppendLine();
-            builder.AppendLine("### 2. Orient");
-            builder.AppendLine("Analyze patterns, synthesize insights, map current→desired state.");
-            builder.AppendLine();
-            builder.AppendLine("### 3. Decide");
-            builder.AppendLine("Evaluate options, select optimal approach considering trade-offs.");
-            builder.AppendLine();
-            builder.AppendLine("### 4. Act");
-            builder.AppendLine("Execute solution systematically with precision.");
-            builder.AppendLine();
-            builder.AppendLine("### 5. Test");
-            builder.AppendLine("Validate functionality, run tests, verify requirements met.");
-            builder.AppendLine();
-            builder.AppendLine("### 6. Document");
-            builder.AppendLine("Update code docs, README, architecture decisions as needed.");
-            builder.AppendLine();
-            builder.AppendLine("## Output");
-            builder.AppendLine("- I always use tools proactively to complete tasks if needed. The user responds with the tools result.");
-            builder.AppendLine("- I will run multiple tools in one turn, but only if they don't depend on each other's output.");
-            builder.AppendLine("- I answer with text if the task is completed.");
-            builder.AppendLine("- I am concise and direct when answering with text (usually under 4 lines unless the user asks for detail).");
-            builder.AppendLine("- I minimize unnecessary explanations unless requested.");
-            builder.AppendLine("- I do not use markdown formatting in my responses.");
-            builder.AppendLine("- Path should always start from current directory (.)");
+            // Load system prompt from markdown file
+            var systemPromptPath = GetSystemPromptPath();
+            if (File.Exists(systemPromptPath))
+            {
+                var systemPrompt = File.ReadAllText(systemPromptPath);
+                // Remove the # System Prompt header line if present
+                if (systemPrompt.StartsWith("# System Prompt"))
+                {
+                    systemPrompt = string.Join(Environment.NewLine,
+                        systemPrompt.Split(new[] { '\r', '\n' }, StringSplitOptions.None)
+                        .Skip(1)
+                        .SkipWhile(string.IsNullOrWhiteSpace));
+                }
+                builder.AppendLine(systemPrompt);
+            }
+            else
+            {
+                // Fallback to minimal prompt if file not found
+                builder.AppendLine("I am an intelligent coding assistant.");
+                builder.AppendLine();
+            }
+
             builder.AppendLine();
             builder.AppendLine($"Working directory: {Directory.GetCurrentDirectory()}");
             builder.AppendLine();
@@ -61,6 +50,27 @@ namespace duo_code.Services
             builder.AppendLine(_toolRegistry.GetAllToolInstructions());
 
             return builder.ToString();
+        }
+
+        private string GetSystemPromptPath()
+        {
+            // Try multiple paths to find the system prompt file
+            var possiblePaths = new[]
+            {
+                Path.Combine(Directory.GetCurrentDirectory(), "Prompts", "system-prompt.md"),
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Prompts", "system-prompt.md"),
+                Path.Combine(Directory.GetCurrentDirectory(), "system-prompt.md"),
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "system-prompt.md")
+            };
+
+            foreach (var path in possiblePaths)
+            {
+                if (File.Exists(path))
+                    return path;
+            }
+
+            // Return the first path as default (for error messaging)
+            return possiblePaths[0];
         }
     }
 }
